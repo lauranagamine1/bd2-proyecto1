@@ -1,4 +1,4 @@
-# Gramática EBNF del Parser SQL
+# Gramática
 
 ---
 
