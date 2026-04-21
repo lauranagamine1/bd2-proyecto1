@@ -1,0 +1,26 @@
+-- CREATE TABLE con índice BTREE y carga desde CSV
+CREATE TABLE clientes (id INT INDEX BTREE, nombre VARCHAR(50), edad INT) FROM FILE 'datos.csv';
+
+-- CREATE TABLE con índice RTREE para datos espaciales
+CREATE TABLE ubicaciones (id INT INDEX BTREE, coords POINT INDEX RTREE);
+
+-- SELECT por igualdad
+SELECT * FROM clientes WHERE id = 42;
+
+-- SELECT por rango
+SELECT * FROM ventas WHERE precio BETWEEN 100 AND 500;
+
+-- SELECT espacial por radio
+SELECT * FROM ubicaciones WHERE coords IN (POINT(-77.03, -12.04), RADIUS 5.0);
+
+-- SELECT espacial KNN
+SELECT * FROM ubicaciones WHERE coords IN (POINT(-77.03, -12.04), K 10);
+
+-- INSERT
+INSERT INTO clientes VALUES (1, 'Ana Torres', 28);
+
+-- INSERT con booleano
+INSERT INTO productos VALUES (99, 'Laptop', 2999.99, TRUE);
+
+-- DELETE
+DELETE FROM clientes WHERE id = 1;
