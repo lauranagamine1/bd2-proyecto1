@@ -85,6 +85,9 @@ spatial_radius_condition ::=
 
 spatial_knn_condition ::=
     IDENTIFIER 'IN' '(' point ',' 'K' INT ')'
+
+point ::=
+    'POINT' '(' NUMBER ',' NUMBER ')'
 ```
 
 > **Ejemplos válidos:**
@@ -173,6 +176,33 @@ CHAR       ::= cualquier carácter excepto "'"
 
 ---
 
+## Autómata del Scanner (AFD por categoría de token)
+
+El scanner reconoce cada token mediante un autómata finito determinista (AFD). Los estados relevantes son:
+
+```
+Estado inicial → q0
+
+IDENTIFICADOR / PALABRA CLAVE:
+  q0 --[a-zA-Z]--> q1 --[a-zA-Z0-9_]--> q1  (acepta en q1)
+  Si el lexema es una palabra clave reservada, se emite el token de esa keyword.
+
+ENTERO:
+  q0 --['-']--> q2 --[0-9]--> q3 --[0-9]--> q3  (acepta en q3)
+  q0 --[0-9]--> q3
+
+FLOTANTE (extensión de ENTERO):
+  q3 --['.']--> q4 --[0-9]--> q5 --[0-9]--> q5  (acepta en q5)
+
+CADENA:
+  q0 --["'"]--> q6 --[cualquier char ≠ "'"]--> q6 --["'"]--> q7  (acepta en q7)
+
+SÍMBOLO (un carácter):
+  ( ) , ; = *  →  token directo desde q0
+```
+
+---
+
 ## Mapeo sentencia → método del índice
 
 | Sentencia SQL | Método del índice |
@@ -194,3 +224,5 @@ CHAR       ::= cualquier carácter excepto "'"
 - Si una columna no tiene `INDEX`, no soporta búsqueda directa por esa columna.
 - `DELETE` solo soporta condición de igualdad (no rango), ya que `remove` recibe una clave puntual.
 - `POINT` solo es válido como valor en columnas de tipo `POINT` con `INDEX RTREE`.
+- `FLOAT` tiene precedencia sobre `INT` cuando el lexema contiene `'.'`.
+- `TRUE` y `FALSE` se reconocen como `BOOLEAN`, no como `IDENTIFIER`.
