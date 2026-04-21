@@ -10,6 +10,8 @@ from parser import parse_sql, ParseError
 from scanner import ScannerError
 from sequential_file import SequentialFile
 from r_tree import RTree
+from file_manager import FileManager
+from buffer_manager import BufferManager
 
 
 class EngineError(Exception):
@@ -20,9 +22,20 @@ class Engine:
     def __init__(self, data_dir: str = "data"):
         self._data_dir = data_dir
         os.makedirs(data_dir, exist_ok=True)
-        # { table_name: { col_name: {"index_type": str, "index": obj} } }
+        self._fm = FileManager()
+        self._bm = BufferManager(self._fm)
         self._tables: dict[str, dict] = {}
-        self._schemas: dict[str, list] = {}  # orden de columnas por tabla
+        self._schemas: dict[str, list] = {}
+
+    def stats(self) -> dict:
+        return {
+            "disk":   self._fm.stats,
+            "buffer": self._bm.stats,
+        }
+
+    def reset_stats(self):
+        self._fm.reset_stats()
+        self._bm.reset_stats()
 
     def run(self, sql: str) -> list:
         try:
@@ -66,12 +79,12 @@ class Engine:
             if idx_type == "SEQUENTIAL":
                 self._tables[name][col_name] = {
                     "index_type": "SEQUENTIAL",
-                    "index": SequentialFile(path),
+                    "index": SequentialFile(path, self._bm),
                 }
             elif idx_type == "RTREE":
                 self._tables[name][col_name] = {
                     "index_type": "RTREE",
-                    "index": RTree(path),
+                    "index": RTree(path, self._bm),
                 }
             else:
                 # BTREE y HASH aún no implementados; se pueden enchufar aquí

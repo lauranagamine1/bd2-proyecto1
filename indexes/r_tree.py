@@ -16,8 +16,8 @@ ENTRY_SIZE = MBR_SIZE + max(CHILD_SIZE, DATA_SIZE)
 HEADER_FMT  = "<Bh"
 HEADER_SIZE = struct.calcsize(HEADER_FMT)
 
-M = (PAGE_SIZE - HEADER_SIZE) // ENTRY_SIZE  # capacidad máxima por nodo
-m = max(1, M // 2)                            # mínimo de entradas (condición de split)
+M = (PAGE_SIZE - HEADER_SIZE) // ENTRY_SIZE
+m = max(1, M // 2)
 
 
 class MBR(NamedTuple):
@@ -82,11 +82,10 @@ def _unpack_data(raw: bytes, offset: int) -> bytes:
 
 
 class RTree:
-    def __init__(self, filepath: str):
+    def __init__(self, filepath: str, buffer_manager=None):
         self._path = filepath + ".rtree"
         self._meta = filepath + ".rtree.meta"
-        self._disk_reads  = 0
-        self._disk_writes = 0
+        self._bm   = buffer_manager
 
         if not os.path.exists(self._path):
             open(self._path, "wb").close()
@@ -94,13 +93,6 @@ class RTree:
             self._save_meta()
         else:
             self._load_meta()
-
-    @property
-    def disk_accesses(self) -> dict:
-        return {"reads": self._disk_reads, "writes": self._disk_writes}
-
-    def reset_stats(self):
-        self._disk_reads = self._disk_writes = 0
 
     def _save_meta(self):
         with open(self._meta, "wb") as f:
@@ -114,25 +106,30 @@ class RTree:
         return os.path.getsize(self._path) // PAGE_SIZE
 
     def _read_page(self, page_id: int) -> bytes:
+        if self._bm:
+            return self._bm.read_page(self._path, page_id)
         with open(self._path, "rb") as f:
             f.seek(page_id * PAGE_SIZE)
             raw = f.read(PAGE_SIZE)
-        self._disk_reads += 1
         return raw.ljust(PAGE_SIZE, b"\x00")
 
     def _write_page(self, page_id: int, raw: bytes):
         raw = raw[:PAGE_SIZE].ljust(PAGE_SIZE, b"\x00")
-        with open(self._path, "r+b") as f:
-            f.seek(page_id * PAGE_SIZE)
-            f.write(raw)
-        self._disk_writes += 1
+        if self._bm:
+            self._bm.write_page(self._path, page_id, raw)
+        else:
+            with open(self._path, "r+b") as f:
+                f.seek(page_id * PAGE_SIZE)
+                f.write(raw)
 
     def _new_page(self, is_leaf: bool) -> int:
-        page_id = self._page_count()
         header = struct.pack(HEADER_FMT, int(is_leaf), 0)
+        raw = header.ljust(PAGE_SIZE, b"\x00")
+        if self._bm:
+            return self._bm.append_page(self._path, raw)
         with open(self._path, "ab") as f:
-            f.write(header.ljust(PAGE_SIZE, b"\x00"))
-        self._disk_writes += 1
+            page_id = f.tell() // PAGE_SIZE
+            f.write(raw)
         return page_id
 
     def _parse_node(self, raw: bytes) -> tuple[bool, list]:
@@ -219,8 +216,7 @@ class RTree:
         _, entries = self._parse_node(self._read_page(page_id))
         return self._node_mbr(entries)
 
-    # split cuadrático de Guttman: elige las dos semillas más separadas y
-    # distribuye el resto por menor ampliación de área
+    # split cuadrático de Guttman
     def _split(self, page_id: int, is_leaf: bool, entries: list):
         s1, s2 = self._pick_seeds(entries)
         group1, group2 = [entries[s1]], [entries[s2]]
@@ -314,8 +310,6 @@ class RTree:
         nx = max(mbr.x_min, min(cx, mbr.x_max))
         ny = max(mbr.y_min, min(cy, mbr.y_max))
         return math.hypot(cx - nx, cy - ny)
-
-    # --- debug ---
 
     def dump(self, page_id: int | None = None, depth: int = 0):
         if page_id is None:
