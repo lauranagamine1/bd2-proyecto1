@@ -1,4 +1,4 @@
-# BD2 - Proyecto 1: Mini SQL Engine
+# BD2 - Proyecto 1: Heider BD
 
 **Integrantes:** 
 - Laura Nagamine
