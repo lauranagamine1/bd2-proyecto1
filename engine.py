@@ -143,6 +143,10 @@ class Engine:
         table = node["table"]
         self._check_table(table)
         cond = node["condition"]
+
+        if cond is None:
+            return self._select_all(table)
+
         col  = cond["column"]
 
         meta = self._get_index(table, col)
@@ -179,6 +183,13 @@ class Engine:
             raw_results = [data for _, data in idx.knn(pt["x"], pt["y"], cond["k"])]
 
         return [json.loads(r.decode()) for r in raw_results]
+
+    def _select_all(self, table: str) -> list:
+        if not self._tables[table]:
+            raise EngineError(f"La tabla '{table}' no tiene índices para hacer scan")
+        col_name = next(iter(self._tables[table]))
+        idx = self._tables[table][col_name]["index"]
+        return [json.loads(r.decode()) for r in idx.scan_all()]
 
     # --- DELETE ---
 

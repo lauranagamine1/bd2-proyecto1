@@ -66,7 +66,7 @@ index_type ::=
 
 ```ebnf
 select_statement ::=
-    'SELECT' '*' 'FROM' IDENTIFIER 'WHERE' condition
+    'SELECT' '*' 'FROM' IDENTIFIER [ 'WHERE' condition ]
 
 condition ::=
     equality_condition
@@ -92,6 +92,7 @@ point ::=
 
 > **Ejemplos válidos:**
 > ```sql
+> SELECT * FROM clientes;
 > SELECT * FROM clientes WHERE id = 42;
 > SELECT * FROM ventas WHERE precio BETWEEN 100 AND 500;
 > SELECT * FROM ubicaciones WHERE coords IN (POINT(-77.03, -12.04), RADIUS 5.0);
@@ -207,6 +208,7 @@ SÍMBOLO (un carácter):
 
 | Sentencia SQL | Método del índice |
 |---|---|
+| `SELECT * FROM tabla` | `index.scan_all()` |
 | `SELECT ... WHERE col = v` | `index.search(v)` |
 | `SELECT ... WHERE col BETWEEN v1 AND v2` | `index.range_search(v1, v2)` |
 | `SELECT ... WHERE col IN (POINT(...), RADIUS r)` | `index.range_search(point, r)` |
