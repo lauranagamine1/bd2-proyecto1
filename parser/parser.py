@@ -134,8 +134,10 @@ class Parser:
         self._expect(TokenType.STAR)
         self._expect(TokenType.FROM)
         table = self._expect(TokenType.IDENTIFIER).value
-        self._expect(TokenType.WHERE)
-        return _node("SELECT", table=table, condition=self._parse_condition())
+        condition = None
+        if self._match(TokenType.WHERE):
+            condition = self._parse_condition()
+        return _node("SELECT", table=table, condition=condition)
 
     def _parse_condition(self) -> dict:
         col = self._expect(TokenType.IDENTIFIER).value

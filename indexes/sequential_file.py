@@ -194,20 +194,28 @@ class SequentialFile:
         for path in (self._main, self._aux):
             for i in range(self._record_count(path)):
                 rec = self._read_record(path, i)
-                if rec and not rec[3]:
+                if rec and not rec[3] and rec[1]:
                     records.append((rec[0], rec[1]))
         records.sort(key=lambda r: r[0])
 
-        # trunca y reescribe; hay que invalidar el cache porque el archivo cambió de tamaño
         if self._bm:
             self._bm.invalidate(self._main)
             self._bm.invalidate(self._aux)
-        open(self._main, "wb").close()
-        for i, (key, data) in enumerate(records):
-            self._write_record(self._main, i, key, data, NO_NEXT, 0)
+
+        # escribe directo a disco para evitar desincronía entre buffer y archivo truncado
+        with open(self._main, "wb") as f:
+            for key, data in records:
+                f.write(_pack(key, data, NO_NEXT, 0))
         open(self._aux, "wb").close()
-        if self._bm:
-            self._bm.flush(self._main)
+
+    def scan_all(self) -> list[bytes]:
+        results = []
+        for path in (self._main, self._aux):
+            for i in range(self._record_count(path)):
+                rec = self._read_record(path, i)
+                if rec and not rec[3] and rec[1]:
+                    results.append(rec[1])
+        return results
 
     def dump(self):
         print("=== PRINCIPAL ===")
