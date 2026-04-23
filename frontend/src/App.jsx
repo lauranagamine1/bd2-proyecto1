@@ -97,6 +97,7 @@ export default function App() {
     "CREATE TABLE clientes (id INT INDEX SEQUENTIAL, nombre VARCHAR(50), edad INT);\n" +
     "INSERT INTO clientes VALUES (1, 'Laura', 28);\n" +
     "INSERT INTO clientes VALUES (2, 'Sofia', 22);\n" +
+    "INSERT INTO clientes VALUES (3, 'Renato', 30);\n" +
     "SELECT * FROM clientes;"
   )
   const [results, setResults] = useState([])
