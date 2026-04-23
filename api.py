@@ -37,7 +37,7 @@ def run_query(req: QueryRequest):
     return {
         "results": results,
         "stats": {
-            **engine.stats,
+            **engine.stats(),
             "time_ms": round(elapsed_ms, 2),
         },
     }
@@ -45,4 +45,4 @@ def run_query(req: QueryRequest):
 
 @app.get("/stats")
 def get_stats():
-    return engine.stats
+    return engine.stats()
