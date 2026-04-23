@@ -95,9 +95,9 @@ function PointPlot({ rows }) {
 export default function App() {
   const [sql, setSql] = useState(
     "CREATE TABLE clientes (id INT INDEX SEQUENTIAL, nombre VARCHAR(50), edad INT);\n" +
-    "INSERT INTO clientes VALUES (1, 'Ana', 28);\n" +
-    "INSERT INTO clientes VALUES (2, 'Beto', 22);\n" +
-    "SELECT * FROM clientes WHERE id BETWEEN 1 AND 2;"
+    "INSERT INTO clientes VALUES (1, 'Laura', 28);\n" +
+    "INSERT INTO clientes VALUES (2, 'Sofia', 22);\n" +
+    "SELECT * FROM clientes;"
   )
   const [results, setResults] = useState([])
   const [stats, setStats]     = useState(null)
