@@ -6,6 +6,9 @@
 
 ---
 
+Link al PPT: (faltaaa)
+Link al informe: (falta)
+
 ## ¿Qué es esto?
 
 Un motor de base de datos construido desde cero en Python. Implementa su propio parser SQL, índices en disco y un buffer pool en RAM. Tiene un frontend en React donde puedes escribir y ejecutar consultas directamente.
