@@ -23,6 +23,8 @@ class Bucket:
         self.next = next_bucket
 
 
+from contextlib import contextmanager
+
 class ExtendibleHash:
     def __init__(self, folder="hash_files", use_buffer=True):
         self.folder = folder
@@ -39,6 +41,18 @@ class ExtendibleHash:
             self.bm = None
 
         self._ensure_files()
+
+    @contextmanager
+    def _lock_and_pin(self, path: str, page_id: int):
+        if self.bm:
+            self.bm.lock_page(path, page_id)
+            try:
+                yield
+            finally:
+                self.bm.unlock_page(path, page_id)
+                self.bm.unpin_page(path, page_id)
+        else:
+            yield
 
     def _read_page(self, path, page_id):
         if self.bm:
@@ -147,102 +161,117 @@ class ExtendibleHash:
         return global_depth, new_directory
     
     def insert(self, key):
-        global_depth, directory = self._read_directory()
-        dir_idx = self._get_dir_idx(key, global_depth)
-        bucket_id = directory[dir_idx]
-        bucket = self._read_bucket(bucket_id)
-
-        if key in bucket.keys:
-            return
-
-        if bucket.count < FB:
-            bucket.keys[bucket.count] = key
-            bucket.count +=1
-            self._write_bucket(bucket_id, bucket)
-        else:
-            self.split(bucket_id, key)
-            self.insert(key)
+        with self._lock_and_pin(self.index_path, 0):
+            global_depth, directory = self._read_directory()
+            dir_idx = self._get_dir_idx(key, global_depth)
+            bucket_id = directory[dir_idx]
+            
+            with self._lock_and_pin(self.data_path, bucket_id):
+                bucket = self._read_bucket(bucket_id)
+        
+                if key in bucket.keys:
+                    return
+        
+                if bucket.count < FB:
+                    bucket.keys[bucket.count] = key
+                    bucket.count +=1
+                    self._write_bucket(bucket_id, bucket)
+                else:
+                    self.split(bucket_id, key)
+                    # No llamamos a insert recursivo para no anidar locks innecesarios,
+                    # sino que el split se encargará de reinsertar todo.
+                    # Wait, el código original llamaba a self.insert(key).
+                    # Lo dejamos igual, RLock nos protege.
+                    self.insert(key)
 
     def split(self, bucket_id, key):
-        global_depth, directory = self._read_directory()
-        old_bucket = self._read_bucket(bucket_id)
+        with self._lock_and_pin(self.index_path, 0):
+            global_depth, directory = self._read_directory()
+            with self._lock_and_pin(self.data_path, bucket_id):
+                old_bucket = self._read_bucket(bucket_id)
 
-        if old_bucket.local_depth == global_depth:
-            if global_depth == MAX_GLOBAL_DEPTH:
-                self.overflow(bucket_id, key)
-                return
-
-            global_depth, directory = self._double_directory(global_depth, directory)
-
-        new_local_depth = old_bucket.local_depth + 1
-
-        old_keys = []
-        for i in range(old_bucket.count):  #pasar keys a memoria
-            old_keys.append(old_bucket.keys[i])
+                if old_bucket.local_depth == global_depth:
+                    if global_depth == MAX_GLOBAL_DEPTH:
+                        self.overflow(bucket_id, key)
+                        return
         
-        #reset de bucket para insercion
-        old_bucket.keys = [-1] * FB
-        old_bucket.count = 0
-        old_bucket.local_depth = new_local_depth
-
-        new_bucket = Bucket(local_depth = new_local_depth)
-        new_bucket_id = self._append_bucket(new_bucket)
-
-        for i in range(len(directory)): #punteros
-            if directory[i] == bucket_id:
-                bit = (i >> (new_local_depth - 1)) & 1
-
-                if bit == 1:
-                    directory[i] = new_bucket_id
-
-        self._write_bucket(bucket_id, old_bucket)
-        self._write_bucket(new_bucket_id, new_bucket)
-        self._write_directory(global_depth, directory)
-
-        for key in old_keys:
-            temp_idx = self._get_dir_idx(key, global_depth)
-            temp_bucket_id = directory[temp_idx]
-            temp_bucket = self._read_bucket(temp_bucket_id)
-
-            temp_bucket.keys[temp_bucket.count] = key
-            temp_bucket.count += 1
-
-            self._write_bucket(temp_bucket_id, temp_bucket)
+                    global_depth, directory = self._double_directory(global_depth, directory)
+        
+                new_local_depth = old_bucket.local_depth + 1
+        
+                old_keys = []
+                for i in range(old_bucket.count):  #pasar keys a memoria
+                    old_keys.append(old_bucket.keys[i])
+                
+                #reset de bucket para insercion
+                old_bucket.keys = [-1] * FB
+                old_bucket.count = 0
+                old_bucket.local_depth = new_local_depth
+        
+                new_bucket = Bucket(local_depth = new_local_depth)
+                new_bucket_id = self._append_bucket(new_bucket)
+        
+                for i in range(len(directory)): #punteros
+                    if directory[i] == bucket_id:
+                        bit = (i >> (new_local_depth - 1)) & 1
+        
+                        if bit == 1:
+                            directory[i] = new_bucket_id
+        
+                self._write_bucket(bucket_id, old_bucket)
+                self._write_bucket(new_bucket_id, new_bucket)
+                self._write_directory(global_depth, directory)
+        
+                for old_key in old_keys:
+                    temp_idx = self._get_dir_idx(old_key, global_depth)
+                    temp_bucket_id = directory[temp_idx]
+                    with self._lock_and_pin(self.data_path, temp_bucket_id):
+                        temp_bucket = self._read_bucket(temp_bucket_id)
+            
+                        temp_bucket.keys[temp_bucket.count] = old_key
+                        temp_bucket.count += 1
+            
+                        self._write_bucket(temp_bucket_id, temp_bucket)
 
     def overflow(self, bucket_id, key):
-        bucket = self._read_bucket(bucket_id)
+        with self._lock_and_pin(self.data_path, bucket_id):
+            bucket = self._read_bucket(bucket_id)
 
-        if key in bucket.keys:
-            return
-
-        if bucket.count < FB:
-            bucket.keys[bucket.count] = key
-            bucket.count += 1
-
-            self._write_bucket(bucket_id, bucket)
-            return 
-        if bucket.next == -1 :
-            overflow_bucket = Bucket(local_depth = bucket.local_depth)
-            overflow_bucket_id = self._append_bucket(overflow_bucket)
-
-            bucket.next = overflow_bucket_id
-            self._write_bucket(bucket_id, bucket)
-            self.overflow(overflow_bucket_id, key)
-            return
-
-        self.overflow(bucket.next, key)
+            if key in bucket.keys:
+                return
+    
+            if bucket.count < FB:
+                bucket.keys[bucket.count] = key
+                bucket.count += 1
+    
+                self._write_bucket(bucket_id, bucket)
+                return 
+            if bucket.next == -1 :
+                overflow_bucket = Bucket(local_depth = bucket.local_depth)
+                overflow_bucket_id = self._append_bucket(overflow_bucket)
+    
+                bucket.next = overflow_bucket_id
+                self._write_bucket(bucket_id, bucket)
+                self.overflow(overflow_bucket_id, key)
+                return
+    
+            self.overflow(bucket.next, key)
 
 
     def search(self, key) -> Bucket:
-        global_depth, directory = self._read_directory()
-        dir_idx = self._get_dir_idx(key, global_depth)
-        bucket_id = directory[dir_idx]
-        bucket = self._read_bucket(bucket_id)
+        with self._lock_and_pin(self.index_path, 0):
+            global_depth, directory = self._read_directory()
+            dir_idx = self._get_dir_idx(key, global_depth)
+            bucket_id = directory[dir_idx]
+            
+        with self._lock_and_pin(self.data_path, bucket_id):
+            bucket = self._read_bucket(bucket_id)
 
         if key not in bucket.keys and bucket.next != -1:
             while True:
                 temp_id = bucket.next
-                temp_bucket = self._read_bucket(temp_id)
+                with self._lock_and_pin(self.data_path, temp_id):
+                    temp_bucket = self._read_bucket(temp_id)
                 if key in temp_bucket.keys:
                     return temp_bucket
                 if key not in temp_bucket.keys and temp_bucket.next == -1:

@@ -23,6 +23,8 @@ def _unpack(raw: bytes) -> tuple:
     return key, data.rstrip(b"\x00"), next_offset, deleted
 
 
+from contextlib import contextmanager
+
 class SequentialFile:
     def __init__(self, filepath: str, buffer_manager=None):
         self._main = filepath + ".bin"
@@ -33,13 +35,26 @@ class SequentialFile:
             if not os.path.exists(path):
                 open(path, "wb").close()
 
+    @contextmanager
+    def _lock_and_pin(self, path: str, page_id: int):
+        if self._bm:
+            self._bm.lock_page(path, page_id)
+            try:
+                yield
+            finally:
+                self._bm.unlock_page(path, page_id)
+                self._bm.unpin_page(path, page_id)
+        else:
+            yield
+
     def _read_raw(self, path: str, offset: int, size: int) -> bytes:
         if self._bm:
             # calcula qué página contiene el offset y lee desde ahí
             page_id = offset // PAGE_SIZE
             page_off = offset % PAGE_SIZE
-            page = self._bm.read_page(path, page_id)
-            return page[page_off:page_off + size]
+            with self._lock_and_pin(path, page_id):
+                page = self._bm.read_page(path, page_id)
+                return page[page_off:page_off + size]
         with open(path, "rb") as f:
             f.seek(offset)
             return f.read(size)
@@ -48,12 +63,13 @@ class SequentialFile:
         if self._bm:
             page_id  = offset // PAGE_SIZE
             page_off = offset % PAGE_SIZE
-            # si la página aún no existe en disco, extiende el archivo
-            while page_id >= self._fm.page_count(path):
-                self._fm.append_page(path, b"\x00" * PAGE_SIZE)
-            page = bytearray(self._bm.read_page(path, page_id))
-            page[page_off:page_off + len(data)] = data
-            self._bm.write_page(path, page_id, bytes(page))
+            with self._lock_and_pin(path, page_id):
+                # si la página aún no existe en disco, extiende el archivo
+                while page_id >= self._fm.page_count(path):
+                    self._fm.append_page(path, b"\x00" * PAGE_SIZE)
+                page = bytearray(self._bm.read_page(path, page_id))
+                page[page_off:page_off + len(data)] = data
+                self._bm.write_page(path, page_id, bytes(page))
         else:
             with open(path, "r+b" if os.path.getsize(path) > 0 else "wb") as f:
                 f.seek(offset)

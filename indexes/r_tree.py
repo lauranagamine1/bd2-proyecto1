@@ -128,11 +128,35 @@ class Node:
         return node
 
 
+from contextlib import contextmanager
+
 class RTree:
     def __init__(self, filepath: str, buffer_manager=None):
         self._path = filepath + ".rtree"
         self._meta = filepath + ".rtree.meta"
         self._bm   = buffer_manager
+        
+        # Meta lock para cuando se cambia el _root_page
+        self._meta_lock = __import__("threading").Lock()
+
+        if not os.path.exists(self._path):
+            open(self._path, "wb").close()
+            self._root_page = self._new_page(is_leaf=True)
+            self._save_meta()
+        else:
+            self._load_meta()
+
+    @contextmanager
+    def _lock_and_pin(self, page_id: int):
+        if self._bm:
+            self._bm.lock_page(self._path, page_id)
+            try:
+                yield
+            finally:
+                self._bm.unlock_page(self._path, page_id)
+                self._bm.unpin_page(self._path, page_id)
+        else:
+            yield
 
         if not os.path.exists(self._path):
             open(self._path, "wb").close()
@@ -185,47 +209,50 @@ class RTree:
         rect = Rect.from_point(x, y)
         leaf = Leaf(rect, data)
         
-        result = self._insert(self._root_page, leaf)
-        
-        if result:
-            n1, n2 = result
-            new_root_page = self._new_page(is_leaf=False)
-            new_root = Node(new_root_page, is_leaf=False)
-            new_root.entries = [
-                Branch(n1.compute_mbr(), n1.page_id),
-                Branch(n2.compute_mbr(), n2.page_id)
-            ]
-            self._write_node(new_root)
-            self._root_page = new_root_page
-            self._save_meta()
+        with self._meta_lock:
+            result = self._insert(self._root_page, leaf)
+            
+            if result:
+                n1, n2 = result
+                new_root_page = self._new_page(is_leaf=False)
+                new_root = Node(new_root_page, is_leaf=False)
+                new_root.entries = [
+                    Branch(n1.compute_mbr(), n1.page_id),
+                    Branch(n2.compute_mbr(), n2.page_id)
+                ]
+                self._write_node(new_root)
+                self._root_page = new_root_page
+                self._save_meta()
 
     def _insert(self, page_id: int, entry: Entry):
-        node = self._read_node(page_id)
-        
-        if node.is_leaf:
-            node.entries.append(entry)
-            if len(node.entries) > M:
-                return self._split(node)
+        with self._lock_and_pin(page_id):
+            node = self._read_node(page_id)
+            
+            if node.is_leaf:
+                node.entries.append(entry)
+                if len(node.entries) > M:
+                    return self._split(node)
+                self._write_node(node)
+                return None
+                
+            best_branch = self._choose_subtree(node, entry.rect)
+            result = self._insert(best_branch.child_page, entry)
+            
+            if result:
+                n1, n2 = result
+                node.entries.remove(best_branch)
+                node.entries.append(Branch(n1.compute_mbr(), n1.page_id))
+                node.entries.append(Branch(n2.compute_mbr(), n2.page_id))
+                
+                if len(node.entries) > M:
+                    return self._split(node)
+            else:
+                child_node = self._read_node(best_branch.child_page)
+                best_branch.rect = child_node.compute_mbr()
+                if self._bm: self._bm.unpin_page(self._path, best_branch.child_page)
+                
             self._write_node(node)
             return None
-            
-        best_branch = self._choose_subtree(node, entry.rect)
-        result = self._insert(best_branch.child_page, entry)
-        
-        if result:
-            n1, n2 = result
-            node.entries.remove(best_branch)
-            node.entries.append(Branch(n1.compute_mbr(), n1.page_id))
-            node.entries.append(Branch(n2.compute_mbr(), n2.page_id))
-            
-            if len(node.entries) > M:
-                return self._split(node)
-        else:
-            child_node = self._read_node(best_branch.child_page)
-            best_branch.rect = child_node.compute_mbr()
-            
-        self._write_node(node)
-        return None
 
     def _choose_subtree(self, node: Node, rect: Rect) -> Branch:
         best = None
@@ -314,47 +341,51 @@ class RTree:
     def remove(self, x: float, y: float, data: bytes = None) -> bool:
         rect = Rect.from_point(x, y)
         eliminated = []
-        if self._remove_recursive(self._root_page, rect, data, eliminated):
-            for e, is_leaf in eliminated:
-                self._reinsert_subtree(e, is_leaf)
-            
-            root_node = self._read_node(self._root_page)
-            if not root_node.is_leaf and len(root_node.entries) == 1:
-                self._root_page = root_node.entries[0].child_page
-                self._save_meta()
-            return True
+        with self._meta_lock:
+            if self._remove_recursive(self._root_page, rect, data, eliminated):
+                for e, is_leaf in eliminated:
+                    self._reinsert_subtree(e, is_leaf)
+                
+                root_node = self._read_node(self._root_page)
+                if not root_node.is_leaf and len(root_node.entries) == 1:
+                    self._root_page = root_node.entries[0].child_page
+                    self._save_meta()
+                if self._bm: self._bm.unpin_page(self._path, self._root_page)
+                return True
         return False
         
     def _remove_recursive(self, page_id: int, rect: Rect, data: bytes, eliminated: list) -> bool:
-        node = self._read_node(page_id)
-        
-        if node.is_leaf:
-            for i, e in enumerate(node.entries):
-                if abs(e.rect.x_min - rect.x_min) < 1e-9 and abs(e.rect.y_min - rect.y_min) < 1e-9:
-                    if data is None or e.data == data:
-                        node.entries.pop(i)
-                        self._write_node(node)
-                        return True
-            return False
+        with self._lock_and_pin(page_id):
+            node = self._read_node(page_id)
             
-        else:
-            removed_something = False
-            for i, e in enumerate(node.entries):
-                if e.rect.intersects(rect):
-                    if self._remove_recursive(e.child_page, rect, data, eliminated):
-                        removed_something = True
-                        
-                        child_node = self._read_node(e.child_page)
-                        if len(child_node.entries) < m:
-                            eliminated.extend([(ce, child_node.is_leaf) for ce in child_node.entries])
+            if node.is_leaf:
+                for i, e in enumerate(node.entries):
+                    if abs(e.rect.x_min - rect.x_min) < 1e-9 and abs(e.rect.y_min - rect.y_min) < 1e-9:
+                        if data is None or e.data == data:
                             node.entries.pop(i)
-                        else:
-                            e.rect = child_node.compute_mbr()
+                            self._write_node(node)
+                            return True
+                return False
+                
+            else:
+                removed_something = False
+                for i, e in enumerate(node.entries):
+                    if e.rect.intersects(rect):
+                        if self._remove_recursive(e.child_page, rect, data, eliminated):
+                            removed_something = True
                             
-                        self._write_node(node)
-                        return True
-                        
-            return removed_something
+                            child_node = self._read_node(e.child_page)
+                            if len(child_node.entries) < m:
+                                eliminated.extend([(ce, child_node.is_leaf) for ce in child_node.entries])
+                                node.entries.pop(i)
+                            else:
+                                e.rect = child_node.compute_mbr()
+                                
+                            if self._bm: self._bm.unpin_page(self._path, e.child_page)
+                            self._write_node(node)
+                            return True
+                            
+                return removed_something
 
     def _reinsert_subtree(self, e: Entry, is_leaf: bool):
         if is_leaf:
@@ -376,18 +407,20 @@ class RTree:
         return results
 
     def _range_search(self, page_id: int, cx: float, cy: float, r: float, results: list):
-        node = self._read_node(page_id)
-        for e in node.entries:
-            if not e.rect.intersects_circle(cx, cy, r):
-                continue
-            if node.is_leaf:
-                if math.hypot(cx - e.rect.x_min, cy - e.rect.y_min) <= r:
-                    results.append(e.data)
-            else:
-                self._range_search(e.child_page, cx, cy, r, results)
+        with self._lock_and_pin(page_id):
+            node = self._read_node(page_id)
+            for e in node.entries:
+                if not e.rect.intersects_circle(cx, cy, r):
+                    continue
+                if node.is_leaf:
+                    if math.hypot(cx - e.rect.x_min, cy - e.rect.y_min) <= r:
+                        results.append(e.data)
+                else:
+                    self._range_search(e.child_page, cx, cy, r, results)
 
     def knn(self, cx: float, cy: float, k: int) -> list[tuple[float, bytes]]:
-        heap = [(0.0, self._root_page, False)]
+        with self._meta_lock:
+            heap = [(0.0, self._root_page, False)]
         results = []
 
         while heap and len(results) < k:
@@ -395,13 +428,15 @@ class RTree:
             if is_result:
                 results.append((dist, item))
                 continue
-            node = self._read_node(item)
-            for e in node.entries:
-                if node.is_leaf:
-                    d = math.hypot(cx - e.rect.x_min, cy - e.rect.y_min)
-                    heapq.heappush(heap, (d, e.data, True))
-                else:
-                    d = e.rect.min_dist(cx, cy)
-                    heapq.heappush(heap, (d, e.child_page, False))
+            
+            with self._lock_and_pin(item):
+                node = self._read_node(item)
+                for e in node.entries:
+                    if node.is_leaf:
+                        d = math.hypot(cx - e.rect.x_min, cy - e.rect.y_min)
+                        heapq.heappush(heap, (d, e.data, True))
+                    else:
+                        d = e.rect.min_dist(cx, cy)
+                        heapq.heappush(heap, (d, e.child_page, False))
 
         return results
