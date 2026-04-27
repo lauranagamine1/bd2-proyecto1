@@ -1,11 +1,17 @@
 from pathlib import Path
 import shutil
+import sys
+
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+MANAGER_DIR = BASE_DIR / "manager"
+if str(MANAGER_DIR) not in sys.path:
+    sys.path.append(str(MANAGER_DIR))
 
 from record_file import RecordFile
 from schemas import Column, DataType, Record, Table
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent
 TEST_RF_PATH = BASE_DIR / "test_record_file_data"
 
 
