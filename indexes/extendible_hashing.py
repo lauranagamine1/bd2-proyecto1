@@ -25,8 +25,6 @@ class Bucket:
         self.free_list = free_list
 
 
-from contextlib import contextmanager
-
 class ExtendibleHash:
     def __init__(self, folder="hash_files", use_buffer=True, fb=DEFAULT_FB):
         self.folder = folder
