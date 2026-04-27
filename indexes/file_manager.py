@@ -29,6 +29,14 @@ class FileManager:
 
     def write_page(self, path: str, page_id: int, data: bytes):
         data = data[:PAGE_SIZE].ljust(PAGE_SIZE, b"\x00")
+        current_pages = self.page_count(path)
+
+        if current_pages <= page_id:
+            missing_pages = page_id - current_pages + 1
+            with open(path, "ab") as f:
+                for _ in range(missing_pages):
+                    f.write(b"\x00" * PAGE_SIZE)
+
         with open(path, "r+b") as f:
             f.seek(page_id * PAGE_SIZE)
             f.write(data)

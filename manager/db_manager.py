@@ -1,8 +1,17 @@
 import csv
 import os
 import pickle
+import sys
+from pathlib import Path
 from record_file import RecordFile
 from schemas import DataType, IndexType, Record, Table
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+INDEXES_DIR = BASE_DIR / "indexes"
+if str(INDEXES_DIR) not in sys.path:
+    sys.path.append(str(INDEXES_DIR))
+
+from extendible_hashing import ExtendibleHash
 
 """
 - create_table: crea metadata + RecordFile + placeholders de índices
@@ -84,10 +93,15 @@ class DBManager:
         for column in table.columns:
             if column.index_type != IndexType.NONE:
                 index_key = self.get_index_key(table.name, column.name)
-                self.indexes[index_key] = None
+                self.indexes[index_key] = self.build_index(table.name, column)
 
     def get_index(self, table_name: str, column_name: str):
         return self.indexes.get(self.get_index_key(table_name, column_name))
+
+    def build_index(self, table_name: str, column):
+        if column.index_type == IndexType.EXTHASH:
+            return ExtendibleHash(self.get_hash_index_path(table_name, column.name), use_buffer=False)
+        return None
 
     def insert(self, table_name: str, values: list):
         table = self.get_schema(table_name)
@@ -115,7 +129,8 @@ class DBManager:
             index_key = self.get_index_key(table.name, column.name)
             index = self.indexes.get(index_key)
             if index is not None:
-                index.add(value, record_id)
+                if column.index_type == IndexType.EXTHASH:
+                    index.insert(value, record_id)
 
     def load_csv(self, table_name: str, csv_path: str, delimiter=";", max_rows=None):
         if not os.path.exists(csv_path):
@@ -157,6 +172,13 @@ class DBManager:
         index = self.get_index(table.name, column.name)
         if index is not None and hasattr(index, "search"):
             record_file = self.get_record_file(table.name)
+            if column.index_type == IndexType.EXTHASH:
+                record_id = index.search(value)
+                if record_id is None:
+                    return []
+                record = record_file.read(record_id)
+                return [self._record_to_dict(table, record)]
+
             results = []
             for record_id in index.search(value):
                 try:
@@ -264,6 +286,9 @@ class DBManager:
 
     def get_index_key(self, table_name: str, column_name: str):
         return f"{table_name.lower()}.{column_name}"
+
+    def get_hash_index_path(self, table_name: str, column_name: str):
+        return os.path.join(self.base_path, "indexes", table_name.lower(), column_name)
 
     def read_record(self, table_name, record_id):
         table = self.get_schema(table_name)
