@@ -3,6 +3,7 @@
 **Integrantes:** 
 - Laura Nagamine
 - Sofia Ku
+- Anthony Romero
 
 ---
 

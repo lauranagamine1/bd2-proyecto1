@@ -180,7 +180,12 @@ class Engine:
             if idx_type != "RTREE":
                 raise EngineError("IN ... K solo disponible con índice RTREE")
             pt = cond["point"]
-            raw_results = [data for _, data in idx.knn(pt["x"], pt["y"], cond["k"])]
+            results = []
+            for dist, data in idx.knn(pt["x"], pt["y"], cond["k"]):
+                record = json.loads(data.decode())
+                record["_distance"] = round(dist, 4)
+                results.append(record)
+            return results
 
         return [json.loads(r.decode()) for r in raw_results]
 
@@ -199,11 +204,18 @@ class Engine:
         col = node["column"]
 
         meta = self._get_index(table, col)
-        if meta["index_type"] != "SEQUENTIAL":
-            raise EngineError("DELETE solo disponible con índice SEQUENTIAL")
+        idx_type = meta["index_type"]
+        idx = meta["index"]
 
-        key = float(self._extract_value(node["value"]))
-        removed = meta["index"].remove(key)
+        if idx_type == "SEQUENTIAL":
+            key = float(self._extract_value(node["value"]))
+            removed = idx.remove(key)
+        elif idx_type == "RTREE":
+            x, y = self._parse_point_value(node["value"])
+            removed = idx.remove(x, y)
+        else:
+            raise EngineError(f"DELETE no implementado para índice {idx_type}")
+
         status = "eliminado" if removed else "no encontrado"
         return {"status": "ok", "message": status}
 
