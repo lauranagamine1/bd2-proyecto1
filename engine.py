@@ -12,7 +12,7 @@ from sequential_file import SequentialFile
 from r_tree import RTree
 from file_manager import FileManager
 from buffer_manager import BufferManager
-
+from b_tree import BPlusTree
 
 class EngineError(Exception):
     pass
@@ -86,6 +86,12 @@ class Engine:
                     "index_type": "RTREE",
                     "index": RTree(path, self._bm),
                 }
+            elif idx_type == "BTREE":
+                self._tables[name][col_name] = {
+                    "index_type": "BTREE",
+                    "index": BPlusTree(path, self._bm),
+                }
+
             else:
                 # BTREE y HASH aún no implementados; se pueden enchufar aquí
                 raise EngineError(f"Índice {idx_type} aún no implementado")
@@ -137,6 +143,10 @@ class Engine:
                 x, y = self._parse_point_value(row[col_name])
                 idx.add(x, y, payload)
 
+            elif idx_type == "BTREE":
+                key = int(row[col_name])
+                idx.add(key, payload)
+
     # --- SELECT ---
 
     def _select(self, node: dict):
@@ -156,19 +166,37 @@ class Engine:
         raw_results = []
 
         if cond["type"] == "EQUALITY":
-            if idx_type != "SEQUENTIAL":
-                raise EngineError("EQUALITY solo disponible con índice SEQUENTIAL")
-            key = float(self._extract_value(cond["value"]))
-            r = idx.search(key)
+            
+
+            if idx_type == "SEQUENTIAL":
+                key = float(self._extract_value(cond["value"]))
+                r = idx.search(key)
+
+            elif idx_type == "BTREE":
+                key = int(self._extract_value(cond["value"]))
+                r = idx.search(key)
+            else:
+                raise EngineError("EQUALITY solo disponible con índice SEQUENTIAL / BTREE")
+            
+    
             if r:
                 raw_results = [r]
 
         elif cond["type"] == "RANGE":
-            if idx_type != "SEQUENTIAL":
-                raise EngineError("BETWEEN solo disponible con índice SEQUENTIAL")
-            lo = float(self._extract_value(cond["low"]))
-            hi = float(self._extract_value(cond["high"]))
-            raw_results = idx.range_search(lo, hi)
+            lo = self._extract_value(cond["low"])
+            hi = self._extract_value(cond["high"])
+            if idx_type == "SEQUENTIAL":    
+                lo = float(lo)
+                hi = float(hi)
+                raw_results = idx.range_search(lo, hi)
+
+            elif idx_type == "BTREE":
+                lo = int(lo)
+                hi = int(hi)
+                raw_results = idx.range_search(lo, hi)
+
+            else:
+                raise EngineError("BETWEEN solo disponible con índice SEQUENTIAL / BTREE")
 
         elif cond["type"] == "SPATIAL_RADIUS":
             if idx_type != "RTREE":
