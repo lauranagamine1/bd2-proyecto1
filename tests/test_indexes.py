@@ -4,6 +4,7 @@ import math
 
 from sequential_file import SequentialFile
 from r_tree import RTree
+from b_tree import BPlusTree
 
 
 def cleanup(*paths):
@@ -109,6 +110,119 @@ def test_rtree():
     print("-> rtree OK\n")
 
 
+# -----------------------------------------------------------------------
+# B+ Tree
+# -----------------------------------------------------------------------
+
+def test_btree():
+    print("=" * 50)
+    print("B+ TREE")
+    print("=" * 50)
+
+    def cleanup_bt(base):
+        for ext in (".bpt", ".meta"):
+            if os.path.exists(base + ext):
+                os.remove(base + ext)
+
+    # --- 1. clave entera ---
+    print("\n[1] key_type='int'")
+    cleanup_bt("bt_test_int")
+    bt = BPlusTree("bt_test_int", key_type="int")
+
+    claves = [10, 3, 7, 1, 5, 9, 2, 8, 4, 6, 15, 12, 20, 11, 13]
+    for k in claves:
+        bt.add(k, f"val_{k}".encode())
+
+    # búsqueda puntual
+    r = bt.search(7)
+    print(f"  search(7)  -> {r}")
+    assert r == b"val_7", f"fallo search(7): {r}"
+
+    r = bt.search(99)
+    print(f"  search(99) -> {r}  (esperado None)")
+    assert r is None
+
+    # rango
+    rng = bt.range_search(4, 9)
+    vals = sorted(v.decode() for v in rng)
+    print(f"  range(4,9) -> {vals}")
+    assert set(vals) == {"val_4", "val_5", "val_6", "val_7", "val_8", "val_9"}
+
+    # scan_all: debe devolver todas las claves insertadas
+    todos = bt.scan_all()
+    assert len(todos) == len(claves), f"scan_all devolvió {len(todos)}, esperado {len(claves)}"
+    print(f"  scan_all   -> {len(todos)} registros OK")
+
+    # remove: clave existente
+    ok = bt.remove(7)
+    print(f"  remove(7)  -> {ok}  (esperado True)")
+    assert ok is True
+    assert bt.search(7) is None, "clave 7 sigue presente tras remove"
+
+    # remove: clave inexistente
+    ok = bt.remove(99)
+    print(f"  remove(99) -> {ok}  (esperado False)")
+    assert ok is False
+
+    # rango después de remove
+    rng2 = bt.range_search(4, 9)
+    vals2 = sorted(v.decode() for v in rng2)
+    print(f"  range(4,9) post-remove(7) -> {vals2}")
+    assert "val_7" not in vals2
+
+    # inserción masiva para forzar varios splits
+    print("\n[2] inserciones masivas (100 claves) para forzar splits")
+    cleanup_bt("bt_test_mass")
+    bt2 = BPlusTree("bt_test_mass", key_type="int")
+    N = 100
+    for k in range(N):
+        bt2.add(k, f"x{k}".encode())
+    todos2 = bt2.scan_all()
+    assert len(todos2) == N, f"scan_all tras inserciones masivas: {len(todos2)} != {N}"
+    assert bt2.search(0)  == b"x0"
+    assert bt2.search(99) == b"x99"
+    assert bt2.range_search(50, 59) is not None
+    assert len(bt2.range_search(50, 59)) == 10
+    print(f"  scan_all tras {N} inserciones -> {len(todos2)} registros OK")
+
+    # remove masivo: eliminar todos los pares
+    for k in range(0, N, 2):
+        bt2.remove(k)
+    restantes = bt2.scan_all()
+    assert len(restantes) == N // 2, f"remove masivo: {len(restantes)} != {N // 2}"
+    print(f"  remove de {N // 2} claves -> {len(restantes)} restantes OK")
+
+    # --- 3. clave flotante ---
+    print("\n[3] key_type='float'")
+    cleanup_bt("bt_test_float")
+    btf = BPlusTree("bt_test_float", key_type="float")
+    for k in [1.5, 3.14, 2.71, 0.5, 4.0]:
+        btf.add(k, f"f{k}".encode())
+    assert btf.search(3.14) == b"f3.14"
+    assert btf.search(9.99) is None
+    rng_f = btf.range_search(1.0, 3.5)
+    assert len(rng_f) == 3  # 1.5, 2.71, 3.14
+    print(f"  search/range float OK")
+
+    # --- 4. clave string ---
+    print("\n[4] key_type='str'")
+    cleanup_bt("bt_test_str")
+    bts = BPlusTree("bt_test_str", key_type="str")
+    nombres = ["lima", "arequipa", "cusco", "trujillo", "piura"]
+    for n in nombres:
+        bts.add(n, f"ciudad:{n}".encode())
+    assert bts.search("cusco") == b"ciudad:cusco"
+    assert bts.search("ica") is None
+    print(f"  search string OK")
+
+    # limpieza
+    for base in ("bt_test_int", "bt_test_mass", "bt_test_float", "bt_test_str"):
+        cleanup_bt(base)
+
+    print("\n-> btree OK\n")
+
+
 if __name__ == "__main__":
     test_sequential()
     test_rtree()
+    test_btree()
