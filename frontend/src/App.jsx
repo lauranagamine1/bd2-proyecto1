@@ -3,6 +3,8 @@ import {
   ScatterChart, Scatter, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Label,
 } from "recharts"
+import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet"
+import "leaflet/dist/leaflet.css"
 import "./App.css"
 
 const API = "http://localhost:8000"
@@ -177,6 +179,71 @@ function PointPlot({ rows }) {
   )
 }
 
+function MapView({ rows }) {
+  if (!rows || rows.length === 0) return null
+  const pointKeys = Object.keys(rows[0]).filter(
+    k => rows[0][k] && typeof rows[0][k] === "object" && rows[0][k].type === "POINT"
+  )
+  if (pointKeys.length === 0) return null
+
+  const key = pointKeys[0]
+  const points = rows.map((r, i) => ({
+    lat: r[key].x,
+    lng: r[key].y,
+    name: Object.keys(r).find(k => k !== key) || `Punto ${i + 1}`,
+    record: r,
+  }))
+
+  const center = {
+    lat: points.reduce((sum, p) => sum + p.lat, 0) / points.length,
+    lng: points.reduce((sum, p) => sum + p.lng, 0) / points.length,
+  }
+
+  const bounds = points.length > 1 ? points.map(p => [p.lat, p.lng]) : null
+
+  return (
+    <div className="map-card">
+      <div className="card-header">
+        <span className="card-title">Mapa</span>
+        <span className="hint">Solo RTree</span>
+      </div>
+      <div className="map-wrapper">
+        <MapContainer
+          className="map-container"
+          center={[center.lat, center.lng]}
+          bounds={bounds || undefined}
+          zoom={11}
+          scrollWheelZoom={true}
+        >
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+          {points.map((point, index) => (
+            <CircleMarker
+              key={index}
+              center={[point.lat, point.lng]}
+              radius={7}
+              fillColor="#a87ed4"
+              color="#fff"
+              weight={2}
+              fillOpacity={0.9}
+            >
+              <Popup>
+                <div>
+                  <strong>{point.name}</strong>
+                  <div>lat: {point.lat}</div>
+                  <div>lng: {point.lng}</div>
+                </div>
+              </Popup>
+            </CircleMarker>
+          ))}
+        </MapContainer>
+      </div>
+    </div>
+  )
+}
+
 const DEFAULT_SQL =
   "CREATE TABLE clientes (id INT INDEX SEQUENTIAL, nombre VARCHAR(50), edad INT);\n" +
   "INSERT INTO clientes VALUES (1, 'Laura', 28);\n" +
@@ -256,6 +323,7 @@ export default function App() {
               <span className="hint">{dataRows.length} fila{dataRows.length !== 1 ? "s" : ""}</span>
             </div>
             <ResultTable rows={dataRows} />
+            <MapView rows={dataRows} />
             <PointPlot rows={dataRows} />
           </section>
         )}

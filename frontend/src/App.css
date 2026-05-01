@@ -258,6 +258,23 @@ td {
 tr:last-child td { border-bottom: none; }
 tr:hover td { background: #fdf5ff; }
 
+.map-card {
+  margin-top: 1rem;
+}
+
+.map-wrapper {
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid #e8d5f5;
+  box-shadow: 0 2px 12px rgba(140, 80, 180, 0.08);
+}
+
+.map-container {
+  width: 100%;
+  min-height: 320px;
+  height: 320px;
+}
+
 .empty {
   color: #c4aed8;
   font-size: 0.875rem;
