@@ -12,7 +12,7 @@ from sequential_file import SequentialFile
 from r_tree import RTree
 from file_manager import FileManager
 from buffer_manager import BufferManager
-
+from b_tree import BPlusTree
 
 class EngineError(Exception):
     pass
@@ -86,6 +86,14 @@ class Engine:
                     "index_type": "RTREE",
                     "index": RTree(path, self._bm),
                 }
+            elif idx_type == "BTREE":
+                key_type = self._col_key_type(col)
+                self._tables[name][col_name] = {
+                    "index_type": "BTREE",
+                    "index": BPlusTree(path, self._bm, key_type=key_type),
+                    "key_cast": self._key_cast_fn(key_type),
+                }
+
             else:
                 # BTREE y HASH aún no implementados; se pueden enchufar aquí
                 raise EngineError(f"Índice {idx_type} aún no implementado")
@@ -94,6 +102,21 @@ class Engine:
             self._load_csv(name, node["file"])
 
         return {"status": "ok", "message": f"tabla '{name}' creada"}
+
+    def _col_key_type(self, col: dict) -> str:
+        kind = col.get("data_type", {}).get("kind", "INT")
+        if kind == "FLOAT":
+            return "float"
+        if kind == "VARCHAR":
+            return "str"
+        return "int"  # INT, BOOL, default
+
+    def _key_cast_fn(self, key_type: str):
+        if key_type == "float":
+            return float
+        if key_type == "str":
+            return str
+        return int
 
     def _load_csv(self, table: str, filepath: str):
         if not os.path.exists(filepath):
@@ -137,6 +160,11 @@ class Engine:
                 x, y = self._parse_point_value(row[col_name])
                 idx.add(x, y, payload)
 
+            elif idx_type == "BTREE":
+                cast = meta.get("key_cast", int)
+                key = cast(row[col_name])
+                idx.add(key, payload)
+
     # --- SELECT ---
 
     def _select(self, node: dict):
@@ -156,19 +184,39 @@ class Engine:
         raw_results = []
 
         if cond["type"] == "EQUALITY":
-            if idx_type != "SEQUENTIAL":
-                raise EngineError("EQUALITY solo disponible con índice SEQUENTIAL")
-            key = float(self._extract_value(cond["value"]))
-            r = idx.search(key)
+
+
+            if idx_type == "SEQUENTIAL":
+                key = float(self._extract_value(cond["value"]))
+                r = idx.search(key)
+
+            elif idx_type == "BTREE":
+                cast = meta.get("key_cast", int)
+                key = cast(self._extract_value(cond["value"]))
+                r = idx.search(key)
+            else:
+                raise EngineError("EQUALITY solo disponible con índice SEQUENTIAL / BTREE")
+
+
             if r:
                 raw_results = [r]
 
         elif cond["type"] == "RANGE":
-            if idx_type != "SEQUENTIAL":
-                raise EngineError("BETWEEN solo disponible con índice SEQUENTIAL")
-            lo = float(self._extract_value(cond["low"]))
-            hi = float(self._extract_value(cond["high"]))
-            raw_results = idx.range_search(lo, hi)
+            lo = self._extract_value(cond["low"])
+            hi = self._extract_value(cond["high"])
+            if idx_type == "SEQUENTIAL":
+                lo = float(lo)
+                hi = float(hi)
+                raw_results = idx.range_search(lo, hi)
+
+            elif idx_type == "BTREE":
+                cast = meta.get("key_cast", int)
+                lo = cast(lo)
+                hi = cast(hi)
+                raw_results = idx.range_search(lo, hi)
+
+            else:
+                raise EngineError("BETWEEN solo disponible con índice SEQUENTIAL / BTREE")
 
         elif cond["type"] == "SPATIAL_RADIUS":
             if idx_type != "RTREE":
@@ -180,12 +228,7 @@ class Engine:
             if idx_type != "RTREE":
                 raise EngineError("IN ... K solo disponible con índice RTREE")
             pt = cond["point"]
-            results = []
-            for dist, data in idx.knn(pt["x"], pt["y"], cond["k"]):
-                record = json.loads(data.decode())
-                record["_distance"] = round(dist, 4)
-                results.append(record)
-            return results
+            raw_results = [data for _, data in idx.knn(pt["x"], pt["y"], cond["k"])]
 
         return [json.loads(r.decode()) for r in raw_results]
 
@@ -206,15 +249,16 @@ class Engine:
         meta = self._get_index(table, col)
         idx_type = meta["index_type"]
         idx = meta["index"]
-
         if idx_type == "SEQUENTIAL":
             key = float(self._extract_value(node["value"]))
             removed = idx.remove(key)
-        elif idx_type == "RTREE":
-            x, y = self._parse_point_value(node["value"])
-            removed = idx.remove(x, y)
+        elif idx_type == "BTREE":
+            cast = meta.get("key_cast", int)
+            key = cast(self._extract_value(node["value"]))
+            removed = idx.remove(key)
         else:
             raise EngineError(f"DELETE no implementado para índice {idx_type}")
+
 
         status = "eliminado" if removed else "no encontrado"
         return {"status": "ok", "message": status}
