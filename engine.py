@@ -95,7 +95,6 @@ class Engine:
                 }
 
             else:
-                # BTREE y HASH aún no implementados; se pueden enchufar aquí
                 raise EngineError(f"Índice {idx_type} aún no implementado")
 
         if node["file"]:
