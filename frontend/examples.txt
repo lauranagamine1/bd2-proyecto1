@@ -1,0 +1,60 @@
+***DEFAULT
+
+CREATE TABLE clientes (id INT INDEX SEQUENTIAL, nombre VARCHAR(50), edad INT);
+INSERT INTO clientes VALUES (1, 'Laura', 28);
+INSERT INTO clientes VALUES (2, 'Sofia', 22);
+INSERT INTO clientes VALUES (3, 'Renato', 30);
+INSERT INTO clientes VALUES (4, 'Mikel', 16);
+SELECT * FROM clientes;
+
+SELECT * FROM clientes;
+SELECT * FROM clientes WHERE id = 3;
+SELECT * FROM clientes WHERE sueldo = 3000;
+SELECT * FROM clientes WHERE edad BETWEEN 20 AND 30;
+
+***CSV - AIRBNB SIN INDICES
+
+CREATE TABLE airbnb_sin_indices (
+  id INT,
+  name VARCHAR(200),
+  price INT,
+  location POINT
+) FROM FILE 'dataset/Airbnb_1k.csv';
+
+SELECT * FROM airbnb_sin_indices WHERE id = 1001254;
+SELECT * FROM airbnb_sin_indices WHERE price = 966;
+SELECT * FROM airbnb_sin_indices WHERE price BETWEEN 100 AND 200;
+SELECT * FROM airbnb_sin_indices WHERE location IN (POINT(40.75362, -73.98377), K 5);
+SELECT * FROM airbnb_sin_indices WHERE location IN (POINT(40.75362, -73.98377), RADIUS 0.02);
+
+
+***CSV - AIRBNB CON HASH, BTREE Y RTREE
+
+CREATE TABLE airbnb (
+  id INT INDEX HASH,
+  name VARCHAR(200),
+  price INT INDEX BTREE,
+  location POINT INDEX RTREE
+) FROM FILE 'dataset/Airbnb_1k.csv';
+
+
+SELECT * FROM airbnb_sin_indices WHERE id = 1001254;
+SELECT * FROM airbnb_sin_indices WHERE price = 966;
+SELECT * FROM airbnb_sin_indices WHERE price BETWEEN 100 AND 200;
+SELECT * FROM airbnb_sin_indices WHERE location IN (POINT(40.75362, -73.98377), K 5);
+SELECT * FROM airbnb_sin_indices WHERE location IN (POINT(40.75362, -73.98377), RADIUS 0.02);
+
+
+***CSV - AIRBNB INSERT Y DELETE
+
+INSERT INTO airbnb_insert_delete VALUES (9999999, 'Test Codex Place', 123, POINT(40.75, -73.98));
+
+SELECT * FROM airbnb_insert_delete WHERE id = 9999999;
+SELECT * FROM airbnb_insert_delete WHERE price BETWEEN 120 AND 130;
+SELECT * FROM airbnb_insert_delete WHERE location IN (POINT(40.75, -73.98), K 3);
+
+DELETE FROM airbnb_insert_delete WHERE id = 9999999;
+
+SELECT * FROM airbnb_insert_delete WHERE id = 9999999;
+SELECT * FROM airbnb_insert_delete WHERE price BETWEEN 120 AND 130;
+SELECT * FROM airbnb_insert_delete WHERE location IN (POINT(40.75, -73.98), K 3);

@@ -1,0 +1,16 @@
+.git
+__pycache__/
+*.pyc
+.venv/
+venv/
+data/
+scratch/
+frontend/node_modules/
+frontend/dist/
+*.bin
+*.aux
+*.dat
+*.bpt
+*.meta
+*.rtree
+*.rtree.meta

@@ -5,7 +5,7 @@ from file_manager import FileManager, PAGE_SIZE
 from buffer_manager import BufferManager
 
 DEFAULT_FB = 4
-MAX_GLOBAL_DEPTH = 6
+MAX_GLOBAL_DEPTH = 20
 
 INDEX_HEADER_FORMAT = "iiiii" # global_depth, directory_size, free_head, bucket_count, fb
 INDEX_HEADER_SIZE = struct.calcsize(INDEX_HEADER_FORMAT)

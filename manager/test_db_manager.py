@@ -102,7 +102,40 @@ def test_csv_load():
     print(f"Total visible por select_all: {len(all_rows)}")
     assert len(all_rows) == 20
 
+def test_indexed_duplicate_equal_searches():
+    print("\n" + "=" * 60)
+    reset_test_data()
+
+    db = DBManager(base_path=str(TEST_DB_PATH))
+    table = Table(
+        "ventas",
+        [
+            Column("id", DataType.INT),
+            Column("price", DataType.INT, index_type=IndexType.BTREE),
+            Column("rank", DataType.INT, index_type=IndexType.SEQFILE),
+            Column("code", DataType.INT, index_type=IndexType.EXTHASH),
+        ],
+    )
+    db.create_table(table)
+
+    db.insert("ventas", ["1", "10", "7", "5"])
+    db.insert("ventas", ["2", "10", "7", "5"])
+
+    btree_rows = db.select_equal("ventas", "price", "10")
+    seq_rows = db.select_equal("ventas", "rank", "7")
+    hash_rows = db.select_equal("ventas", "code", "5")
+
+    print("BTree duplicates:", btree_rows)
+    print("Sequential duplicates:", seq_rows)
+    print("Hash non-primary duplicates:", hash_rows)
+
+    assert len(btree_rows) == 2
+    assert len(seq_rows) == 2
+    assert len(hash_rows) == 2
+    print("\n" + "=" * 60)
+
 
 if __name__ == "__main__":
     test_manual_operations()
     test_csv_load()
+    test_indexed_duplicate_equal_searches()

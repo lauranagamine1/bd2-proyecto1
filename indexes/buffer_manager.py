@@ -1,17 +1,18 @@
 import threading
 from collections import OrderedDict
+import os
 import sys
 sys.path.insert(0, "../manager")
-try:
-    from transaction_log import TransactionLogger
-except ImportError:
-    TransactionLogger = None
 
-if TransactionLogger is None:
+TransactionLogger = None
+if os.environ.get("BD2_TRANSACTION_LOG") == "1":
     try:
-        from manager.transaction_log import TransactionLogger
+        from transaction_log import TransactionLogger
     except ImportError:
-        pass
+        try:
+            from manager.transaction_log import TransactionLogger
+        except ImportError:
+            TransactionLogger = None
 
 from file_manager import FileManager
 

@@ -14,16 +14,75 @@ body {
 /* ── Layout ── */
 
 .app {
-  max-width: 900px;
+  max-width: 1440px;
   margin: 0 auto;
-  padding: 2rem 1.5rem 4rem;
+  padding: 1.25rem 1.5rem;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 header {
   display: flex;
   align-items: center;
   gap: 1rem;
-  margin-bottom: 2rem;
+  margin-bottom: 1.25rem;
+  flex-shrink: 0;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(360px, 42%) minmax(0, 1fr);
+  gap: 1.25rem;
+  min-height: 0;
+  flex: 1;
+}
+
+.left-pane,
+.right-pane {
+  min-width: 0;
+}
+
+.left-pane {
+  overflow: auto;
+  padding-right: 0.15rem;
+}
+
+.right-pane {
+  overflow: auto;
+  padding-right: 0.35rem;
+}
+
+.results-card {
+  min-height: 100%;
+}
+
+.empty-results {
+  min-height: 320px;
+  border: 1px dashed #e2d0f0;
+  border-radius: 8px;
+  background: #fdf8ff;
+  color: #c4aed8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+}
+
+.result-messages {
+  min-height: 320px;
+  border: 1px dashed #e2d0f0;
+  border-radius: 8px;
+  background: #fdf8ff;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.65rem;
+  padding: 1.5rem;
+}
+
+.messages-card {
+  margin-top: 1rem;
 }
 
 .header-icon {
@@ -58,7 +117,7 @@ header h1 {
   border: 1.5px solid #e8d5f5;
   border-radius: 14px;
   padding: 1.25rem 1.5rem;
-  margin-bottom: 1.25rem;
+  margin-bottom: 1rem;
   box-shadow: 0 2px 12px rgba(140, 80, 180, 0.06);
 }
 
@@ -124,7 +183,7 @@ header h1 {
   resize: vertical;
   caret-color: #9b5dd4;
   z-index: 1;
-  min-height: 160px;
+  min-height: 260px;
 }
 
 .editor-wrap:focus-within {
@@ -179,8 +238,8 @@ header h1 {
 /* ── Stats ── */
 
 .stats {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.75rem;
 }
 
@@ -192,7 +251,7 @@ header h1 {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  min-width: 100px;
+  min-width: 0;
 }
 
 .stat-label {
@@ -271,8 +330,24 @@ tr:hover td { background: #fdf5ff; }
 
 .map-container {
   width: 100%;
-  min-height: 320px;
-  height: 320px;
+  min-height: 360px;
+  height: 360px;
+}
+
+@media (max-width: 900px) {
+  .app {
+    height: auto;
+    min-height: 100vh;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .left-pane,
+  .right-pane {
+    overflow: visible;
+  }
 }
 
 .empty {
@@ -301,7 +376,7 @@ tr:hover td { background: #fdf5ff; }
   background: #d4f0e0;
   color: #3aaa72;
   border-radius: 50%;
-  width: 20px;
+  width: 24px;
   height: 20px;
   display: flex;
   align-items: center;

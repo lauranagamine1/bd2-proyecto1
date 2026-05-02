@@ -158,13 +158,6 @@ class RTree:
         else:
             yield
 
-        if not os.path.exists(self._path):
-            open(self._path, "wb").close()
-            self._root_page = self._new_page(is_leaf=True)
-            self._save_meta()
-        else:
-            self._load_meta()
-
     def _save_meta(self):
         with open(self._meta, "wb") as f:
             f.write(struct.pack("<qq", self._root_page, self._page_count()))
@@ -420,11 +413,12 @@ class RTree:
 
     def knn(self, cx: float, cy: float, k: int) -> list[tuple[float, bytes]]:
         with self._meta_lock:
-            heap = [(0.0, self._root_page, False)]
+            heap = [(0.0, 0, self._root_page, False)]
+            next_seq = 1
         results = []
 
         while heap and len(results) < k:
-            dist, item, is_result = heapq.heappop(heap)
+            dist, _, item, is_result = heapq.heappop(heap)
             if is_result:
                 results.append((dist, item))
                 continue
@@ -434,9 +428,10 @@ class RTree:
                 for e in node.entries:
                     if node.is_leaf:
                         d = math.hypot(cx - e.rect.x_min, cy - e.rect.y_min)
-                        heapq.heappush(heap, (d, e.data, True))
+                        heapq.heappush(heap, (d, next_seq, e.data, True))
                     else:
                         d = e.rect.min_dist(cx, cy)
-                        heapq.heappush(heap, (d, e.child_page, False))
+                        heapq.heappush(heap, (d, next_seq, e.child_page, False))
+                    next_seq += 1
 
         return results

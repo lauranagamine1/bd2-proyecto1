@@ -7,7 +7,7 @@ import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet"
 import "leaflet/dist/leaflet.css"
 import "./App.css"
 
-const API = "http://localhost:8000"
+const API = import.meta.env.VITE_API_URL || "http://localhost:8000"
 
 const KEYWORDS = new Set([
   "SELECT","FROM","WHERE","CREATE","TABLE","INSERT","INTO","VALUES",
@@ -84,28 +84,38 @@ function SqlEditor({ value, onChange }) {
 }
 
 function StatsPanel({ stats }) {
-  if (!stats) return null
+  const display = {
+    time_ms: stats?.time_ms ?? "0",
+    disk: {
+      reads: stats?.disk?.reads ?? "0",
+      writes: stats?.disk?.writes ?? "0",
+    },
+    buffer: {
+      hits: stats?.buffer?.hits ?? "0",
+      misses: stats?.buffer?.misses ?? "0",
+    },
+  }
   return (
     <div className="stats">
       <div className="stat-item">
         <span className="stat-label">Tiempo</span>
-        <span className="stat-value">{stats.time_ms} ms</span>
+        <span className="stat-value">{display.time_ms} ms</span>
       </div>
       <div className="stat-item">
         <span className="stat-label">Lecturas disco</span>
-        <span className="stat-value">{stats.disk.reads}</span>
+        <span className="stat-value">{display.disk.reads}</span>
       </div>
       <div className="stat-item">
         <span className="stat-label">Escrituras disco</span>
-        <span className="stat-value">{stats.disk.writes}</span>
+        <span className="stat-value">{display.disk.writes}</span>
       </div>
       <div className="stat-item">
         <span className="stat-label">Buffer hits</span>
-        <span className="stat-value hit">{stats.buffer.hits}</span>
+        <span className="stat-value hit">{display.buffer.hits}</span>
       </div>
       <div className="stat-item">
         <span className="stat-label">Buffer misses</span>
-        <span className="stat-value miss">{stats.buffer.misses}</span>
+        <span className="stat-value miss">{display.buffer.misses}</span>
       </div>
     </div>
   )
@@ -114,6 +124,13 @@ function StatsPanel({ stats }) {
 function ResultTable({ rows }) {
   if (!rows || rows.length === 0) return <p className="empty">Sin resultados</p>
   const keys = Object.keys(rows[0])
+  const formatValue = value => {
+    if (value && typeof value === "object" && value.type === "POINT") {
+      return `( ${value.x} , ${value.y} )`
+    }
+    if (value && typeof value === "object") return JSON.stringify(value)
+    return String(value)
+  }
   return (
     <div className="table-wrap">
       <table>
@@ -125,7 +142,7 @@ function ResultTable({ rows }) {
             <tr key={i}>
               {keys.map(k => (
                 <td key={k}>
-                  {typeof row[k] === "object" ? JSON.stringify(row[k]) : String(row[k])}
+                  {formatValue(row[k])}
                 </td>
               ))}
             </tr>
@@ -282,18 +299,20 @@ export default function App() {
   const rows     = results.flatMap(r => Array.isArray(r) ? r : [r])
   const dataRows = rows.filter(r => !r.status)
   const msgRows  = rows.filter(r => r.status)
+  const hasEmptyResult = results.some(r => Array.isArray(r) && r.length === 0)
 
   return (
     <div className="app">
       <header>
         <div className="header-icon">🗄️</div>
         <div>
-          <h1>Heider BD</h1>
+          <h1>AIRBNB BD</h1>
           <p className="subtitle">BD2 · Proyecto 1</p>
         </div>
       </header>
 
-      <main>
+      <main className="workspace">
+        <div className="left-pane">
         <section className="card editor-section">
           <div className="card-header">
             <span className="card-title">Consulta SQL</span>
@@ -309,36 +328,46 @@ export default function App() {
 
         {error && <div className="error-box">{error}</div>}
 
-        {stats && (
-          <section className="card">
+        <section className="card">
             <div className="card-header"><span className="card-title">Estadísticas</span></div>
             <StatsPanel stats={stats} />
           </section>
-        )}
 
-        {dataRows.length > 0 && (
-          <section className="card">
+        </div>
+
+        <div className="right-pane">
+        <section className="card results-card">
             <div className="card-header">
               <span className="card-title">Resultados</span>
               <span className="hint">{dataRows.length} fila{dataRows.length !== 1 ? "s" : ""}</span>
             </div>
-            <ResultTable rows={dataRows} />
-            <MapView rows={dataRows} />
-            <PointPlot rows={dataRows} />
+            {dataRows.length > 0 ? (
+              <>
+                <ResultTable rows={dataRows} />
+                <MapView rows={dataRows} />
+                <PointPlot rows={dataRows} />
+              </>
+            ) : (msgRows.length > 0 || hasEmptyResult) ? (
+              <div className="result-messages">
+                {msgRows.map((r, i) => (
+                  <div key={i} className="msg">
+                    <span className="msg-icon">✓</span> {r.message}
+                  </div>
+                ))}
+                {hasEmptyResult && (
+                  <div className="msg">
+                    <span className="msg-icon">!</span> Registro no encontrado
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="empty-results">
+                <p>Sin resultados</p>
+              </div>
+            )}
           </section>
-        )}
 
-        {!error && dataRows.length === 0 && msgRows.length > 0 && (
-          <section className="card">
-            <div className="messages">
-              {msgRows.map((r, i) => (
-                <div key={i} className="msg">
-                  <span className="msg-icon">✓</span> {r.message}
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+        </div>
       </main>
     </div>
   )

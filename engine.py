@@ -1,18 +1,17 @@
 import sys
-import csv
 import json
 import os
 
 sys.path.insert(0, "parser")
 sys.path.insert(0, "indexes")
+sys.path.insert(0, "manager")
 
 from parser import parse_sql, ParseError
 from scanner import ScannerError
-from sequential_file import SequentialFile
-from r_tree import RTree
 from file_manager import FileManager
 from buffer_manager import BufferManager
-from b_tree import BPlusTree
+from db_manager import DBManager
+from schemas import Column, DataType, IndexType, Table
 
 class EngineError(Exception):
     pass
@@ -24,6 +23,7 @@ class Engine:
         os.makedirs(data_dir, exist_ok=True)
         self._fm = FileManager()
         self._bm = BufferManager(self._fm)
+        self._db = DBManager(base_path=data_dir, buffer_manager=self._bm)
         self._tables: dict[str, dict] = {}
         self._schemas: dict[str, list] = {}
 
@@ -45,7 +45,10 @@ class Engine:
 
         results = []
         for node in nodes:
-            results.append(self._execute(node))
+            try:
+                results.append(self._execute(node))
+            except (FileNotFoundError, ValueError, RuntimeError, IndexError) as e:
+                raise EngineError(str(e)) from e
         return results
 
     def _execute(self, node: dict):
@@ -68,69 +71,53 @@ class Engine:
 
         self._schemas[name] = columns
         self._tables[name] = {}
+        table = self._table_from_node(name, columns)
+        inserted = self._db.create_table(table, node["file"] if node["file"] else None)
 
-        for col in columns:
-            if col["index"] is None:
-                continue
-            idx_type = col["index"]
-            col_name = col["name"]
-            path = os.path.join(self._data_dir, f"{name}__{col_name}")
-
-            if idx_type == "SEQUENTIAL":
-                self._tables[name][col_name] = {
-                    "index_type": "SEQUENTIAL",
-                    "index": SequentialFile(path, self._bm),
-                }
-            elif idx_type == "RTREE":
-                self._tables[name][col_name] = {
-                    "index_type": "RTREE",
-                    "index": RTree(path, self._bm),
-                }
-            elif idx_type == "BTREE":
-                key_type = self._col_key_type(col)
-                self._tables[name][col_name] = {
-                    "index_type": "BTREE",
-                    "index": BPlusTree(path, self._bm, key_type=key_type),
-                    "key_cast": self._key_cast_fn(key_type),
-                }
-
-            else:
-                raise EngineError(f"Índice {idx_type} aún no implementado")
-
+        message = f"tabla '{name}' creada"
         if node["file"]:
-            self._load_csv(name, node["file"])
+            message += f" ({inserted} filas cargadas)"
+        return {"status": "ok", "message": message}
 
-        return {"status": "ok", "message": f"tabla '{name}' creada"}
+    def _table_from_node(self, name: str, columns: list[dict]) -> Table:
+        return Table(name, [self._column_from_node(col) for col in columns])
 
-    def _col_key_type(self, col: dict) -> str:
-        kind = col.get("data_type", {}).get("kind", "INT")
-        if kind == "FLOAT":
-            return "float"
-        if kind == "VARCHAR":
-            return "str"
-        return "int"  # INT, BOOL, default
+    def _column_from_node(self, col: dict) -> Column:
+        data_type = self._data_type_from_node(col["data_type"])
+        index_type = self._index_type_from_node(col["index"])
+        data_size = col["data_type"].get("size") if data_type == DataType.STRING else None
+        return Column(col["name"], data_type, data_size=data_size, index_type=index_type)
 
-    def _key_cast_fn(self, key_type: str):
-        if key_type == "float":
-            return float
-        if key_type == "str":
-            return str
-        return int
+    def _data_type_from_node(self, data_type: dict) -> DataType:
+        mapping = {
+            "INT": DataType.INT,
+            "FLOAT": DataType.FLOAT,
+            "VARCHAR": DataType.STRING,
+            "BOOL": DataType.BOOL,
+            "POINT": DataType.POINT,
+        }
+        kind = data_type.get("kind", "INT")
+        if kind not in mapping:
+            raise EngineError(f"Tipo de dato {kind} no implementado")
+        return mapping[kind]
 
-    def _load_csv(self, table: str, filepath: str):
-        if not os.path.exists(filepath):
-            raise EngineError(f"Archivo no encontrado: {filepath}")
-        with open(filepath, newline="", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                self._insert_row(table, row)
+    def _index_type_from_node(self, index_type: str | None) -> IndexType:
+        mapping = {
+            None: IndexType.NONE,
+            "SEQUENTIAL": IndexType.SEQFILE,
+            "HASH": IndexType.EXTHASH,
+            "BTREE": IndexType.BTREE,
+            "RTREE": IndexType.RTREE,
+        }
+        if index_type not in mapping:
+            raise EngineError(f"Índice {index_type} aún no implementado")
+        return mapping[index_type]
 
     # --- INSERT ---
 
     def _insert(self, node: dict):
         table = node["table"]
-        self._check_table(table)
-        cols = self._schemas[table]
+        cols = self._get_schema_columns(table)
         values = node["values"]
 
         if len(values) != len(cols):
@@ -138,144 +125,76 @@ class Engine:
                 f"INSERT: se esperaban {len(cols)} valores, se dieron {len(values)}"
             )
 
-        row = {col["name"]: self._extract_value(v) for col, v in zip(cols, values)}
-        self._insert_row(table, row)
+        row_values = [self._value_for_db(v) for v in values]
+        self._db.insert(table, row_values)
         return {"status": "ok", "message": "registro insertado"}
-
-    def _insert_row(self, table: str, row: dict):
-        for col_name, meta in self._tables[table].items():
-            if col_name not in row:
-                continue
-            idx_type = meta["index_type"]
-            idx = meta["index"]
-            # el payload es la fila completa serializada como JSON
-            payload = json.dumps(row, ensure_ascii=False).encode()
-
-            if idx_type == "SEQUENTIAL":
-                key = float(row[col_name])
-                idx.add(key, payload)
-            elif idx_type == "RTREE":
-                # el valor de la columna POINT viene como "x,y" o dict
-                x, y = self._parse_point_value(row[col_name])
-                idx.add(x, y, payload)
-
-            elif idx_type == "BTREE":
-                cast = meta.get("key_cast", int)
-                key = cast(row[col_name])
-                idx.add(key, payload)
 
     # --- SELECT ---
 
     def _select(self, node: dict):
         table = node["table"]
-        self._check_table(table)
         cond = node["condition"]
 
         if cond is None:
-            return self._select_all(table)
+            return self._db.select_all(table)
 
         col  = cond["column"]
 
-        meta = self._get_index(table, col)
-        idx_type = meta["index_type"]
-        idx = meta["index"]
-
-        raw_results = []
-
         if cond["type"] == "EQUALITY":
-
-
-            if idx_type == "SEQUENTIAL":
-                key = float(self._extract_value(cond["value"]))
-                r = idx.search(key)
-
-            elif idx_type == "BTREE":
-                cast = meta.get("key_cast", int)
-                key = cast(self._extract_value(cond["value"]))
-                r = idx.search(key)
-            else:
-                raise EngineError("EQUALITY solo disponible con índice SEQUENTIAL / BTREE")
-
-
-            if r:
-                raw_results = [r]
+            return self._db.select_equal(table, col, self._value_for_db(cond["value"]))
 
         elif cond["type"] == "RANGE":
-            lo = self._extract_value(cond["low"])
-            hi = self._extract_value(cond["high"])
-            if idx_type == "SEQUENTIAL":
-                lo = float(lo)
-                hi = float(hi)
-                raw_results = idx.range_search(lo, hi)
-
-            elif idx_type == "BTREE":
-                cast = meta.get("key_cast", int)
-                lo = cast(lo)
-                hi = cast(hi)
-                raw_results = idx.range_search(lo, hi)
-
-            else:
-                raise EngineError("BETWEEN solo disponible con índice SEQUENTIAL / BTREE")
+            return self._db.select_range(
+                table,
+                col,
+                self._value_for_db(cond["low"]),
+                self._value_for_db(cond["high"]),
+            )
 
         elif cond["type"] == "SPATIAL_RADIUS":
-            if idx_type != "RTREE":
-                raise EngineError("IN ... RADIUS solo disponible con índice RTREE")
-            pt = cond["point"]
-            raw_results = idx.range_search(pt["x"], pt["y"], cond["radius"])
+            return self._db.select_spatial_radius(table, col, self._value_for_db(cond["point"]), cond["radius"])
 
         elif cond["type"] == "SPATIAL_KNN":
-            if idx_type != "RTREE":
-                raise EngineError("IN ... K solo disponible con índice RTREE")
-            pt = cond["point"]
-            raw_results = [data for _, data in idx.knn(pt["x"], pt["y"], cond["k"])]
+            return self._db.select_spatial_knn(table, col, self._value_for_db(cond["point"]), cond["k"])
 
-        return [json.loads(r.decode()) for r in raw_results]
+        raise EngineError(f"Condición no implementada: {cond['type']}")
 
     def _select_all(self, table: str) -> list:
-        if not self._tables[table]:
-            raise EngineError(f"La tabla '{table}' no tiene índices para hacer scan")
-        col_name = next(iter(self._tables[table]))
-        idx = self._tables[table][col_name]["index"]
-        return [json.loads(r.decode()) for r in idx.scan_all()]
+        return self._db.select_all(table)
 
     # --- DELETE ---
 
     def _delete(self, node: dict):
         table = node["table"]
-        self._check_table(table)
         col = node["column"]
+        removed = self._db.delete_where_equal(table, col, self._value_for_db(node["value"]))
 
-        meta = self._get_index(table, col)
-        idx_type = meta["index_type"]
-        idx = meta["index"]
-        if idx_type == "SEQUENTIAL":
-            key = float(self._extract_value(node["value"]))
-            removed = idx.remove(key)
-        elif idx_type == "BTREE":
-            cast = meta.get("key_cast", int)
-            key = cast(self._extract_value(node["value"]))
-            removed = idx.remove(key)
-        else:
-            raise EngineError(f"DELETE no implementado para índice {idx_type}")
-
-
-        status = "eliminado" if removed else "no encontrado"
+        status = f"{removed} eliminado(s)" if removed else "no encontrado"
         return {"status": "ok", "message": status}
 
     # --- helpers ---
 
     def _check_table(self, table: str):
-        if table not in self._tables:
+        try:
+            self._db.get_schema(table)
+        except FileNotFoundError:
             raise EngineError(f"Tabla '{table}' no existe")
 
     def _get_index(self, table: str, col: str) -> dict:
-        if col not in self._tables[table]:
+        index = self._db.get_index(table, col)
+        if index is None:
             raise EngineError(f"Columna '{col}' no tiene índice en '{table}'")
-        return self._tables[table][col]
+        return index
 
-    def _extract_value(self, node: dict):
+    def _get_schema_columns(self, table: str):
+        try:
+            return self._db.get_schema(table).columns
+        except FileNotFoundError:
+            raise EngineError(f"Tabla '{table}' no existe")
+
+    def _value_for_db(self, node: dict):
         if node["type"] == "POINT":
-            return node  # lo interpreta _parse_point_value
+            return (node["x"], node["y"])
         return node["value"]
 
     def _parse_point_value(self, val) -> tuple[float, float]:
