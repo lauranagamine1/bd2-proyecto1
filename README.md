@@ -1,93 +1,140 @@
-# BD2 - Proyecto 1: Heider BD
+# BD2 - Proyecto 1: AIRBNB BD
 
-**Integrantes:** 
+**Integrantes**
+
 - Laura Nagamine
 - Sofia Ku
 - Anthony Romero
 
----
+## Que es esto
 
-Link al PPT: (faltaaa)
+AIRBNB BD es un mini gestor de base de datos hecho desde cero en Python para el Proyecto 1 de Base de Datos 2. Integra parser SQL propio, archivos de registros en disco, indices por columna, buffer pool con paginas de 4 KB, API REST con FastAPI y frontend en React.
 
-Link al informe: (falta)
+El flujo principal es:
 
-## ¿Qué es esto?
+1. El usuario escribe una consulta SQL en el frontend.
+2. La API envia el texto al motor.
+3. El parser convierte SQL a un AST.
+4. El `Engine` gestiona scanner-parser y llama al `DBManager`.
+5. El `DBManager` usa el archivo base de registros y, si existen, los indices de cada columna.
+6. La respuesta vuelve al frontend con resultados, tiempo y estadisticas de disco/buffer.
 
-Un motor de base de datos construido desde cero en Python. Implementa su propio parser SQL, índices en disco y un buffer pool en RAM. Tiene un frontend en React donde puedes escribir y ejecutar consultas directamente.
+## Como correrlo con Docker
+
+Requisito: tener Docker Desktop abierto.
+
+```bash
+docker compose up --build
+```
+
+Se estará corriendo:
+
+- Frontend: `http://localhost:5173`
+- Backend/API: `http://localhost:8000`
+- Docs de FastAPI: `http://localhost:8000/docs`
+
+Abrir Frontend en `http://localhost:5173`
+
+Para detenerlo:
+
+```bash
+docker compose down
+```
+
+Docker monta:
+
+- `./data` en `/app/data`, para persistir tablas e indices generados.
+- `./dataset` en `/app/dataset`, en modo solo lectura, para cargar CSVs.
+
+## Arquitectura de almacenamiento
+
+Cada tabla tiene un archivo base:
+
+```text
+data/tables/<tabla>/records.dat
+```
+
+Ese archivo funciona como archivo principal de registros: guarda las filas completas y asigna un `record_id` estable a cada una.
+
+Los indices son opcionales y se crean solo cuando una columna declara `INDEX <tecnica>` en el `CREATE TABLE`. Si una columna no tiene indice, las busquedas sobre esa columna hacen scan sobre `records.dat`.
+
+Los indices guardan la clave y un puntero/`record_id`.
 
 ## Estructura
 
-```
-├── parser/
-│   ├── scanner.py           # tokenizador
-│   ├── parser.py            # parser SQL → AST
-│   └── gramatica.md         # gramática EBNF del lenguaje
-├── indexes/
-│   ├── sequential_file.py   # índice secuencial con archivo auxiliar
-│   ├── r_tree.py            # R-Tree para datos espaciales
-│   ├── b_tree.py
-│   ├── extendible_hashing.py
-│   ├── file_manager.py      # única capa que toca disco
-│   └── buffer_manager.py    # pool LRU de páginas en RAM
-├── engine.py                # conecta parser con índices
-├── api.py                   # API REST con FastAPI
-└── frontend/                # interfaz en React + Vite
+```text
+parser/
+  scanner.py             # tokenizador
+  parser.py              # parser SQL -> AST
+  gramatica.md           # gramatica EBNF
+indexes/
+  sequential_file.py     # Sequential File con archivo auxiliar
+  b_tree.py              # B+ Tree
+  extendible_hashing.py  # Extendible Hashing
+  r_tree.py              # R-Tree espacial
+  file_manager.py        # capa de paginas en disco
+  buffer_manager.py      # buffer pool LRU
+manager/
+  db_manager.py          # manejo de tablas, registros e indices
+  record_file.py         # archivo base de registros
+  schemas.py             # tipos, columnas, tablas y records
+engine.py                # conecta parser con DBManager
+api.py                   # API REST con FastAPI
+frontend/                # interfaz en React + Vite
+dataset/                 # CSVs de prueba
 ```
 
 ## SQL soportado
 
 ```sql
--- Crear tabla con índice
-CREATE TABLE clientes (id INT INDEX SEQUENTIAL, nombre VARCHAR(50), edad INT);
-CREATE TABLE lugares  (nombre VARCHAR(50), coords POINT INDEX RTREE);
+CREATE TABLE <nombre> (<col> <tipo> [INDEX <tecnica>], ...) [FROM FILE <path>];
 
--- Cargar desde CSV
-CREATE TABLE ventas (id INT INDEX SEQUENTIAL, monto FLOAT) FROM FILE 'ventas.csv';
+INSERT INTO <tabla> VALUES (...);
 
--- Insertar
-INSERT INTO clientes VALUES (1, 'Ana', 28);
+SELECT * FROM <tabla>;
+SELECT * FROM <tabla> WHERE <col> = <valor>;
+SELECT * FROM <tabla> WHERE <col> BETWEEN <v1> AND <v2>;
+SELECT * FROM <tabla> WHERE <col> IN (POINT(<x>, <y>), RADIUS <r>);
+SELECT * FROM <tabla> WHERE <col> IN (POINT(<x>, <y>), K <k>);
 
--- Consultar todo
-SELECT * FROM clientes;
-
--- Igualdad y rango
-SELECT * FROM clientes WHERE id = 1;
-SELECT * FROM clientes WHERE id BETWEEN 1 AND 10;
-
--- Búsqueda espacial
-SELECT * FROM lugares WHERE coords IN (POINT(-77.03, -12.04), RADIUS 5.0);
-SELECT * FROM lugares WHERE coords IN (POINT(-77.03, -12.04), K 3);
-
--- Eliminar
-DELETE FROM clientes WHERE id = 1;
+DELETE FROM <tabla> WHERE <col> = <valor>;
 ```
 
-## Índices implementados
+Tipos soportados:
 
-| Índice | Keyword | Búsqueda |
+- `INT`
+- `FLOAT`
+- `VARCHAR(n)`
+- `BOOL`
+- `POINT`
+
+Indices soportados:
+
+| Indice | Keyword | Uso principal |
 |---|---|---|
-| Sequential File | `SEQUENTIAL` | igualdad, rango |
-| R-Tree | `RTREE` | radio, KNN |
-| B-Tree | `BTREE` | — |
-| Extendible Hashing | `HASH` | — |
+| Sequential File | `SEQUENTIAL` | igualdad y rangos numericos |
+| Extendible Hashing | `HASH` | busqueda puntual, ideal para claves unicas |
+| B+ Tree | `BTREE` | igualdad y rangos |
+| R-Tree | `RTREE` | radio y KNN sobre `POINT` |
 
-El **Sequential File** mantiene un archivo principal ordenado (`.bin`) y un auxiliar de desbordamiento (`.aux`). Las inserciones van al auxiliar; cuando llega a 10 registros se hace un merge y se reordena todo. Las búsquedas usan búsqueda binaria sobre el principal y lineal sobre el auxiliar.
+## Ejemplos para demo
 
-El **Buffer Manager** implementa un pool LRU de 64 páginas (4096 bytes c/u). Todas las lecturas y escrituras pasan por él antes de llegar a disco, lo que reduce drásticamente los accesos físicos.
+El archivo [frontend/examples.txt](frontend/examples.txt) tiene consultas listas para copiar y pegar en el editor del frontend.
 
-## Cómo correrlo
 
-**Backend:**
+## Desarrollo local sin Docker
+
+Backend:
+
 ```bash
-pip install fastapi uvicorn pydantic
+pip install -r requirements.txt
 uvicorn api:app --reload
 ```
 
-**Frontend:**
+Frontend:
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-
-Abrir `http://localhost:5173`. El frontend muestra syntax highlighting del SQL y estadísticas de disco/buffer por cada consulta ejecutada.
