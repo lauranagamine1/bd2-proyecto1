@@ -24,5 +24,18 @@ class TransactionLogger:
         entry = f"[{timestamp}] [Thread: {thread_name:^12}] {operation:^12} | {details}\n"
         
         with self._lock:
-            with open(self.log_file, "a") as f:
+            with open(self.log_file, "a", encoding="utf-8") as f:
                 f.write(entry)
+
+    def log_causal(self, tx_id: str, lock_type: str, page_id: str, state: str, extra: str = ""):
+        if state == "UNLOCK":
+            msg = f"[{tx_id}] UNLOCK página {page_id}\n"
+        else:
+            msg = f"[{tx_id}] LOCK {lock_type.upper()} página {page_id} -> {state}"
+            if extra:
+                msg += f" ({extra})"
+            msg += "\n"
+            
+        with self._lock:
+            with open(self.log_file, "a", encoding="utf-8") as f:
+                f.write(msg)

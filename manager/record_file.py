@@ -5,21 +5,12 @@ from schemas import Record, Table, calc_record_format
 
 PAGE_SIZE = 4096
 
-"""
-- __init__: prepara el archivo físico y calcula layout/paginación
-- add: inserta registros y devuelve record_id
-- read: recupera un registro válido por su record_id
-- read_slot: permite ver si el slot está borrado
-- record_count: sirve para saber cuántos ids se han reservado
-- scan_all: permite recorrer registros para scans y reconstrucción de índices
-- delete: borrado lógico sin alterar offsets existentes
-"""
-
 class RecordFile:
     HEADER_FORMAT = "i"
     SLOT_HEADER_FORMAT = "?"
 
-    def __init__(self, table: Table, path: str):
+    def __init__(self, table: Table, path: str, buffer_manager=None):
+        self.buffer_manager = buffer_manager
         self.table = table
         self.path = path
         self.data_format = calc_record_format(table.columns)
@@ -41,12 +32,26 @@ class RecordFile:
                 file.write(b"\x00" * (PAGE_SIZE - struct.calcsize(self.HEADER_FORMAT)))
 
     def add(self, record: Record) -> int:
-        with open(self.path, "r+b") as file:
-            record_id = self._read_next_record_id(file)
-            file.seek(self._record_offset(record_id))
-            file.write(self._pack_slot(record))
-            self._write_next_record_id(file, record_id + 1)
-            return record_id
+        if self.buffer_manager:
+            self.buffer_manager.lock_page(self.path, -1, "exclusive")
+        try:
+            with open(self.path, "r+b") as file:
+                record_id = self._read_next_record_id(file)
+                page_id = record_id // self.records_per_page
+                
+                if self.buffer_manager:
+                    self.buffer_manager.lock_page(self.path, page_id, "exclusive")
+                try:
+                    file.seek(self._record_offset(record_id))
+                    file.write(self._pack_slot(record))
+                    self._write_next_record_id(file, record_id + 1)
+                finally:
+                    if self.buffer_manager:
+                        self.buffer_manager.unlock_page(self.path, page_id, "exclusive")
+        finally:
+            if self.buffer_manager:
+                self.buffer_manager.unlock_page(self.path, -1, "exclusive")
+        return record_id
 
     def read(self, record_id: int) -> Record:
         deleted, record = self.read_slot(record_id)
@@ -58,13 +63,23 @@ class RecordFile:
         if record_id < 0:
             raise ValueError("record_id must be non-negative")
 
-        with open(self.path, "rb") as file:
-            next_record_id = self._read_next_record_id(file)
-            if record_id >= next_record_id:
-                raise IndexError(f"record_id {record_id} does not exist")
+        page_id = record_id // self.records_per_page
+        if self.buffer_manager:
+            self.buffer_manager.lock_page(self.path, -1, "shared")
+            self.buffer_manager.lock_page(self.path, page_id, "shared")
+            
+        try:
+            with open(self.path, "rb") as file:
+                next_record_id = self._read_next_record_id(file)
+                if record_id >= next_record_id:
+                    raise IndexError(f"record_id {record_id} does not exist")
 
-            file.seek(self._record_offset(record_id))
-            raw_slot = file.read(self.record_size)
+                file.seek(self._record_offset(record_id))
+                raw_slot = file.read(self.record_size)
+        finally:
+            if self.buffer_manager:
+                self.buffer_manager.unlock_page(self.path, page_id, "shared")
+                self.buffer_manager.unlock_page(self.path, -1, "shared")
 
         if len(raw_slot) != self.record_size:
             raise IndexError(f"record_id {record_id} does not exist")
@@ -72,39 +87,68 @@ class RecordFile:
         return self._unpack_slot(raw_slot)
 
     def delete(self, record_id: int) -> bool:
-        with open(self.path, "r+b") as file:
-            next_record_id = self._read_next_record_id(file)
-            if record_id < 0 or record_id >= next_record_id:
-                return False
+        page_id = record_id // self.records_per_page
+        if self.buffer_manager:
+            self.buffer_manager.lock_page(self.path, -1, "shared")
+            self.buffer_manager.lock_page(self.path, page_id, "exclusive")
+            
+        try:
+            with open(self.path, "r+b") as file:
+                next_record_id = self._read_next_record_id(file)
+                if record_id < 0 or record_id >= next_record_id:
+                    return False
 
-            offset = self._record_offset(record_id)
-            file.seek(offset)
-            raw_slot = file.read(self.record_size)
-            if len(raw_slot) != self.record_size:
-                return False
+                offset = self._record_offset(record_id)
+                file.seek(offset)
+                raw_slot = file.read(self.record_size)
+                if len(raw_slot) != self.record_size:
+                    return False
 
-            deleted, _ = self._unpack_slot(raw_slot)
-            if deleted:
-                return False
+                deleted, _ = self._unpack_slot(raw_slot)
+                if deleted:
+                    return False
 
-            file.seek(offset)
-            file.write(struct.pack(self.SLOT_HEADER_FORMAT, True))
-            return True
+                file.seek(offset)
+                file.write(struct.pack(self.SLOT_HEADER_FORMAT, True))
+                return True
+        finally:
+            if self.buffer_manager:
+                self.buffer_manager.unlock_page(self.path, page_id, "exclusive")
+                self.buffer_manager.unlock_page(self.path, -1, "shared")
 
     def scan_all(self, include_deleted: bool = False) -> list[tuple[int, Record]]:
         results = []
-        with open(self.path, "rb") as file:
-            next_record_id = self._read_next_record_id(file)
+        if self.buffer_manager:
+            self.buffer_manager.lock_page(self.path, -1, "shared")
+            
+        try:
+            with open(self.path, "rb") as file:
+                next_record_id = self._read_next_record_id(file)
+                
+            locked_pages = set()
+            try:
+                with open(self.path, "rb") as file:
+                    for record_id in range(next_record_id):
+                        page_id = record_id // self.records_per_page
+                        if self.buffer_manager and page_id not in locked_pages:
+                            self.buffer_manager.lock_page(self.path, page_id, "shared")
+                            locked_pages.add(page_id)
+                            
+                        file.seek(self._record_offset(record_id))
+                        raw_slot = file.read(self.record_size)
+                        if len(raw_slot) != self.record_size:
+                            break
 
-            for record_id in range(next_record_id):
-                file.seek(self._record_offset(record_id))
-                raw_slot = file.read(self.record_size)
-                if len(raw_slot) != self.record_size:
-                    break
-
-                deleted, record = self._unpack_slot(raw_slot)
-                if not deleted or include_deleted:
-                    results.append((record_id, record))
+                        deleted, record = self._unpack_slot(raw_slot)
+                        if not deleted or include_deleted:
+                            results.append((record_id, record))
+            finally:
+                if self.buffer_manager:
+                    for page_id in locked_pages:
+                        self.buffer_manager.unlock_page(self.path, page_id, "shared")
+        finally:
+            if self.buffer_manager:
+                self.buffer_manager.unlock_page(self.path, -1, "shared")
 
         return results
 
