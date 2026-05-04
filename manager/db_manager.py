@@ -103,12 +103,24 @@ class DBManager:
                 self.indexes[index_key] = self.build_index(table.name, column)
 
     def get_index(self, table_name: str, column_name: str):
-        return self.indexes.get(self.get_index_key(table_name, column_name))
+        index_key = self.get_index_key(table_name, column_name)
+        index = self.indexes.get(index_key)
+        if index is not None:
+            return index
+
+        table = self.get_schema(table_name)
+        column = table.get_column(column_name)
+        if column is None or column.index_type == IndexType.NONE:
+            return None
+
+        index = self.build_index(table.name, column)
+        self.indexes[index_key] = index
+        return index
 
     def build_index(self, table_name: str, column):
         os.makedirs(os.path.dirname(self.get_index_path(table_name, column.name)), exist_ok=True)
         if column.index_type == IndexType.EXTHASH:
-            return ExtendibleHash(self.get_hash_index_path(table_name, column.name), use_buffer=True, fb=24)
+            return ExtendibleHash(self.get_hash_index_path(table_name, column.name), self.buffer_manager, fb=24)
         if column.index_type == IndexType.SEQFILE:
             return SequentialFile(self.get_index_path(table_name, column.name), self.buffer_manager)
         if column.index_type == IndexType.BTREE:
@@ -137,6 +149,7 @@ class DBManager:
         record_file = self.get_record_file(table.name)
         record_id = record_file.add(record)
         self.insert_into_indexes(table, record, record_id)
+        self.flush_indexes(table)
         return record_id
 
     def insert_into_indexes(self, table: Table, record: Record, record_id: int):
@@ -264,9 +277,9 @@ class DBManager:
         if index is not None and hasattr(index, "search"):
             record_file = self.get_record_file(table.name)
             if column.index_type == IndexType.EXTHASH:
+                record_id = index.search(value)
                 if not column.primary:
                     return self._scan_equal(table, column, value)
-                record_id = index.search(value)
                 if record_id is None:
                     return []
                 record = record_file.read(record_id)
@@ -352,6 +365,8 @@ class DBManager:
                 if record_file.delete(record_id):
                     self.delete_from_indexes(table, record, record_id)
                     deleted += 1
+        if deleted:
+            self.flush_indexes(table)
         return deleted
 
     def delete_from_indexes(self, table: Table, record: Record, record_id: int):

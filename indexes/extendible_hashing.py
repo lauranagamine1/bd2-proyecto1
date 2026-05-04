@@ -2,7 +2,6 @@ import os
 import struct
 
 from file_manager import FileManager, PAGE_SIZE
-from buffer_manager import BufferManager
 
 DEFAULT_FB = 4
 MAX_GLOBAL_DEPTH = 20
@@ -26,20 +25,16 @@ class Bucket:
 
 
 class ExtendibleHash:
-    def __init__(self, folder="hash_files", use_buffer=True, fb=DEFAULT_FB):
-        self.folder = folder
-        self.index_path = os.path.join(folder, "index.dat")
-        self.data_path = os.path.join(folder, "data.dat")
+    def __init__(self, path="hash_files", buffer_manager=None, fb=DEFAULT_FB):
+        self._folder = path
+        self.index_path = os.path.join(path, "index.dat")
+        self.data_path = os.path.join(path, "data.dat")
         self.fb = fb
 
-        os.makedirs(folder, exist_ok=True)
+        os.makedirs(path, exist_ok=True)
 
-        self.fm = FileManager()
-
-        if use_buffer:
-            self.bm = BufferManager(self.fm)
-        else:
-            self.bm = None
+        self.bm = buffer_manager
+        self.fm = buffer_manager._fm if buffer_manager else FileManager()
 
         self._configure_layout(self.fb)
         self._ensure_files()
@@ -539,31 +534,3 @@ class ExtendibleHash:
         self.print_directory()
         self.print_index_pages()
         self.print_data_pages()
-
-
-def main():
-    import shutil
-
-    folder = "hash_test"
-
-    if os.path.exists(folder):
-        shutil.rmtree(folder)
-
-    h = ExtendibleHash(folder, use_buffer=True)
-
-    print("_____________ hash vacio _____________")
-    h.print_file()
-
-    print("\nBucket para key 5:")
-    bucket_id = h._get_bucket_id(5)
-    print("key 5 iria al bucket:", bucket_id)
-
-    print("\nBucket para key 8:")
-    bucket_id = h._get_bucket_id(8)
-    print("key 8 iria al bucket:", bucket_id)
-
-    h.flush()
-
-
-if __name__ == "__main__":
-    main()

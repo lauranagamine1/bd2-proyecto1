@@ -321,7 +321,7 @@ def test_extendible_hash():
     folder = "test_hash"
     _rmdir(folder)
 
-    h = ExtendibleHash(folder, use_buffer=False, fb=4)
+    h = ExtendibleHash(folder, fb=4)
 
     # --- insert & search ---
     for k in range(1, 11):
@@ -345,7 +345,7 @@ def test_extendible_hash():
 
     # --- split (muchas inserciones) ---
     _rmdir(folder)
-    h2 = ExtendibleHash(folder, use_buffer=False, fb=2)
+    h2 = ExtendibleHash(folder, fb=2)
     for k in range(50):
         h2.insert(k, k)
 
