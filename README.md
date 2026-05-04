@@ -2,24 +2,27 @@
 
 **Integrantes**
 
-- Laura Nagamine
-- Sofia Ku
-- Anthony Romero
+| Nombre | GitHub |
+|---|---|
+| Laura Gabriela Nagamine Oshiro | [@lauranagamine1](https://github.com/lauranagamine1) |
+| Sofía Valentina Ku Paredes | [@sofkp](https://github.com/sofkp) |
+| Luis Anthony Romero Padilla | [@LuixRom](https://github.com/LuixRom) |
+| María Karolay Tamayo Hilario | [@karolaytamayoh](https://github.com/karolaytamayoh) |
 
-## Que es esto
+## ¿Qué es esto?
 
-AIRBNB BD es un mini gestor de base de datos hecho desde cero en Python para el Proyecto 1 de Base de Datos 2. Integra parser SQL propio, archivos de registros en disco, indices por columna, buffer pool con paginas de 4 KB, API REST con FastAPI y frontend en React.
+AIRBNB BD es un mini gestor de base de datos hecho desde cero en Python para el Proyecto 1 de Base de Datos 2. Integra parser SQL propio, archivos de registros en disco, índices por columna, buffer pool con páginas de 4 KB, API REST con FastAPI y frontend en React.
 
 El flujo principal es:
 
 1. El usuario escribe una consulta SQL en el frontend.
-2. La API envia el texto al motor.
+2. La API envía el texto al motor.
 3. El parser convierte SQL a un AST.
 4. El `Engine` gestiona scanner-parser y llama al `DBManager`.
-5. El `DBManager` usa el archivo base de registros y, si existen, los indices de cada columna.
-6. La respuesta vuelve al frontend con resultados, tiempo y estadisticas de disco/buffer.
+5. El `DBManager` usa el archivo base de registros y, si existen, los índices de cada columna.
+6. La respuesta vuelve al frontend con resultados, tiempo y estadísticas de disco/buffer.
 
-## Como correrlo con Docker
+## ¿Cómo correrlo con Docker?
 
 Requisito: tener Docker Desktop abierto.
 
@@ -33,7 +36,7 @@ Se estará corriendo:
 - Backend/API: `http://localhost:8000`
 - Docs de FastAPI: `http://localhost:8000/docs`
 
-Abrir Frontend en `http://localhost:5173`
+Abrir el frontend en `http://localhost:5173`
 
 Para detenerlo:
 
@@ -43,7 +46,7 @@ docker compose down
 
 Docker monta:
 
-- `./data` en `/app/data`, para persistir tablas e indices generados.
+- `./data` en `/app/data`, para persistir tablas e índices generados.
 - `./dataset` en `/app/dataset`, en modo solo lectura, para cargar CSVs.
 
 ## Arquitectura de almacenamiento
@@ -56,9 +59,9 @@ data/tables/<tabla>/records.dat
 
 Ese archivo funciona como archivo principal de registros: guarda las filas completas y asigna un `record_id` estable a cada una.
 
-Los indices son opcionales y se crean solo cuando una columna declara `INDEX <tecnica>` en el `CREATE TABLE`. Si una columna no tiene indice, las busquedas sobre esa columna hacen scan sobre `records.dat`.
+Los índices son opcionales y se crean solo cuando una columna declara `INDEX <técnica>` en el `CREATE TABLE`. Si una columna no tiene índice, las búsquedas sobre esa columna hacen scan sobre `records.dat`.
 
-Los indices guardan la clave y un puntero/`record_id`.
+Los índices guardan la clave y un puntero/`record_id`.
 
 ## Estructura
 
@@ -66,16 +69,16 @@ Los indices guardan la clave y un puntero/`record_id`.
 parser/
   scanner.py             # tokenizador
   parser.py              # parser SQL -> AST
-  gramatica.md           # gramatica EBNF
+  gramatica.md           # gramática EBNF
 indexes/
   sequential_file.py     # Sequential File con archivo auxiliar
   b_tree.py              # B+ Tree
   extendible_hashing.py  # Extendible Hashing
   r_tree.py              # R-Tree espacial
-  file_manager.py        # capa de paginas en disco
+  file_manager.py        # capa de páginas en disco
   buffer_manager.py      # buffer pool LRU
 manager/
-  db_manager.py          # manejo de tablas, registros e indices
+  db_manager.py          # manejo de tablas, registros e índices
   record_file.py         # archivo base de registros
   schemas.py             # tipos, columnas, tablas y records
 engine.py                # conecta parser con DBManager
@@ -87,7 +90,7 @@ dataset/                 # CSVs de prueba
 ## SQL soportado
 
 ```sql
-CREATE TABLE <nombre> (<col> <tipo> [INDEX <tecnica>], ...) [FROM FILE <path>];
+CREATE TABLE <nombre> (<col> <tipo> [INDEX <técnica>], ...) [FROM FILE <path>];
 
 INSERT INTO <tabla> VALUES (...);
 
@@ -108,12 +111,12 @@ Tipos soportados:
 - `BOOL`
 - `POINT`
 
-Indices soportados:
+Índices soportados:
 
-| Indice | Keyword | Uso principal |
+| Índice | Keyword | Uso principal |
 |---|---|---|
-| Sequential File | `SEQUENTIAL` | igualdad y rangos numericos |
-| Extendible Hashing | `HASH` | busqueda puntual, ideal para claves unicas |
+| Sequential File | `SEQUENTIAL` | igualdad y rangos numéricos |
+| Extendible Hashing | `HASH` | búsqueda puntual, ideal para claves únicas |
 | B+ Tree | `BTREE` | igualdad y rangos |
 | R-Tree | `RTREE` | radio y KNN sobre `POINT` |
 
