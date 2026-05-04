@@ -17,18 +17,6 @@ from extendible_hashing import ExtendibleHash
 from r_tree import RTree
 from sequential_file import SequentialFile
 
-"""
-- create_table: crea metadata + RecordFile + placeholders de índices
-- insert: convierte tipos y agrega registros
-- select_all: permite escanear toda la tabla
-- select_equal: prueba search puntual
-- select_range: prueba search por rango
-- read_record: lee un registro por record_id
-- delete_where_equal: borrado lógico
-- load_csv: carga registros desde archivo
-- convert_value: transforma strings del CSV a tipos reales
-"""
-
 class DBManager:
     def __init__(self, base_path="data", buffer_manager=None):
         self.base_path = base_path
@@ -90,11 +78,11 @@ class DBManager:
             return pickle.load(file)
 
     def create_record_file(self, table: Table):
-        RecordFile(table, self.get_record_path(table.name))
+        RecordFile(table, self.get_record_path(table.name), self.buffer_manager)
 
     def get_record_file(self, table_name: str) -> RecordFile:
         table = self.get_schema(table_name)
-        return RecordFile(table, self.get_record_path(table.name))
+        return RecordFile(table, self.get_record_path(table.name), self.buffer_manager)
 
     def create_indexes(self, table: Table):
         for column in table.columns:

@@ -15,6 +15,10 @@ if os.environ.get("BD2_TRANSACTION_LOG") == "1":
             TransactionLogger = None
 
 from file_manager import FileManager
+from rw_lock import RWLock
+from deadlock_detector import DeadlockDetector, DeadlockDetectedError
+from rw_lock import RWLock
+from deadlock_detector import DeadlockDetector, DeadlockDetectedError
 
 DEFAULT_POOL_SIZE = 64 
 
@@ -50,24 +54,52 @@ class BufferManager:
     def _get_page_lock(self, key):
         with self._pool_lock:
             if key not in self._page_locks:
-                self._page_locks[key] = threading.RLock()
+                self._page_locks[key] = RWLock()
             return self._page_locks[key]
 
-    def lock_page(self, path: str, page_id: int):
+    def lock_page(self, path: str, page_id: int, lock_type: str = "exclusive"):
         key = (path, page_id)
+        tx_id = threading.current_thread().name
         lock = self._get_page_lock(key)
-        if TransactionLogger:
-            TransactionLogger().log(threading.current_thread().name, "ACQUIRE", f"Pidiendo lock para {key}")
-        lock.acquire()
-        if TransactionLogger:
-            TransactionLogger().log(threading.current_thread().name, "LOCKED", f"Lock obtenido para {key}")
+        detector = DeadlockDetector()
+        
+        has_logged_waiting = [False]
+        
+        def deadlock_check_callback(holding_txs):
+            for h_tx in holding_txs:
+                detector.add_edge(tx_id, h_tx)
+            
+            if not has_logged_waiting[0]:
+                if TransactionLogger:
+                    TransactionLogger().log_causal(tx_id, lock_type, str(page_id), "WAITING", f"bloqueado por {', '.join(holding_txs)}")
+                has_logged_waiting[0] = True
+                
+            if detector.has_cycle(tx_id):
+                if TransactionLogger:
+                    TransactionLogger().log_causal(tx_id, lock_type, str(page_id), "DEADLOCK_DETECTED", f"ciclo detectado")
+                detector.clear_all_dependencies(tx_id)
+                raise DeadlockDetectedError(f"Deadlock detectado para {tx_id} esperando la página {page_id}")
 
-    def unlock_page(self, path: str, page_id: int):
-        key = (path, page_id)
-        lock = self._get_page_lock(key)
-        lock.release()
+        if lock_type == "shared":
+            lock.acquire_shared(tx_id, deadlock_check_callback, check_interval=0.1)
+        else:
+            lock.acquire_exclusive(tx_id, deadlock_check_callback, check_interval=0.1)
+            
         if TransactionLogger:
-            TransactionLogger().log(threading.current_thread().name, "RELEASED", f"Lock liberado para {key}")
+            if has_logged_waiting[0]:
+                TransactionLogger().log_causal(tx_id, lock_type, str(page_id), "GRANTED", "desbloqueado")
+            else:
+                TransactionLogger().log_causal(tx_id, lock_type, str(page_id), "GRANTED")
+                
+        detector.remove_edges(tx_id)
+
+    def unlock_page(self, path: str, page_id: int, lock_type: str = "exclusive"):
+        key = (path, page_id)
+        tx_id = threading.current_thread().name
+        lock = self._get_page_lock(key)
+        lock.release(tx_id)
+        if TransactionLogger:
+            TransactionLogger().log_causal(tx_id, lock_type, str(page_id), "UNLOCK")
 
     def read_page(self, path: str, page_id: int) -> bytes:
         key = (path, page_id)
