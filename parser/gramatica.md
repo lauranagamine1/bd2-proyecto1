@@ -62,36 +62,6 @@ LETTER     ::= 'a' | ... | 'z' | 'A' | ... | 'Z'
 DIGIT      ::= '0' | ... | '9'
 CHAR       ::= cualquier carácter excepto "'"
 ```
-
----
-
-## Autómata del Scanner (AFD por categoría de token)
-
-El scanner reconoce cada token mediante un autómata finito determinista (AFD). Los estados relevantes son:
-
-```
-Estado inicial → q0
-
-IDENTIFICADOR / PALABRA CLAVE:
-  q0 --[a-zA-Z]--> q1 --[a-zA-Z0-9_]--> q1  (acepta en q1)
-  Si el lexema es una palabra clave reservada, se emite el token de esa keyword.
-
-ENTERO:
-  q0 --['-']--> q2 --[0-9]--> q3 --[0-9]--> q3  (acepta en q3)
-  q0 --[0-9]--> q3
-
-FLOTANTE (extensión de ENTERO):
-  q3 --['.']--> q4 --[0-9]--> q5 --[0-9]--> q5  (acepta en q5)
-
-CADENA:
-  q0 --["'"]--> q6 --[cualquier char ≠ "'"]--> q6 --["'"]--> q7  (acepta en q7)
-
-SÍMBOLO (un carácter):
-  ( ) , ; = *  →  token directo desde q0
-```
-
----
-
 ## Mapeo sentencia → método del índice
 
 | Sentencia SQL | Método del índice |
