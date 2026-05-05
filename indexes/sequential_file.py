@@ -110,11 +110,8 @@ class SequentialFile:
             if rec is None:
                 break
             rkey, rdata, _, deleted = rec
-            if deleted:
-                hi = mid - 1
-                continue
             if rkey == key:
-                return rdata
+                return None if deleted else rdata
             elif rkey < key:
                 lo = mid + 1
             else:
@@ -144,13 +141,12 @@ class SequentialFile:
                 if rec is None:
                     break
                 rkey, _, _, deleted = rec
-                if rkey >= low and not deleted:
-                    start = mid
+                if rkey >= low:
+                    if not deleted:
+                        start = mid
                     hi = mid - 1
-                elif rkey < low:
-                    lo = mid + 1
                 else:
-                    hi = mid - 1
+                    lo = mid + 1
             for i in range(start, n):
                 rec = self._read_record(self._main, i)
                 if rec is None:
@@ -210,11 +206,13 @@ class SequentialFile:
         for path in (self._main, self._aux):
             for i in range(self._record_count(path)):
                 rec = self._read_record(path, i)
-                if rec and not rec[3] and rec[1]:
+                if rec and not rec[3]:
                     records.append((rec[0], rec[1]))
         records.sort(key=lambda r: r[0])
 
         if self._bm:
+            self._bm.flush(self._main)
+            self._bm.flush(self._aux)
             self._bm.invalidate(self._main)
             self._bm.invalidate(self._aux)
 
@@ -229,7 +227,7 @@ class SequentialFile:
         for path in (self._main, self._aux):
             for i in range(self._record_count(path)):
                 rec = self._read_record(path, i)
-                if rec and not rec[3] and rec[1]:
+                if rec and not rec[3]:
                     results.append(rec[1])
         return results
 
