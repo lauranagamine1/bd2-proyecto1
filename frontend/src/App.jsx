@@ -262,12 +262,14 @@ function MapView({ rows }) {
 }
 
 const DEFAULT_SQL =
-  "CREATE TABLE clientes (id INT INDEX SEQUENTIAL, nombre VARCHAR(50), edad INT);\n" +
-  "INSERT INTO clientes VALUES (1, 'Laura', 28);\n" +
-  "INSERT INTO clientes VALUES (2, 'Sofia', 22);\n" +
-  "INSERT INTO clientes VALUES (3, 'Renato', 30);\n" +
-  "INSERT INTO clientes VALUES (4, 'Mikel', 16);\n" +
-  "SELECT * FROM clientes;"
+  "CREATE TABLE airbnb (\n" +
+  "  id INT INDEX HASH,\n" +
+  "  name VARCHAR(200),\n" +
+  "  price INT INDEX BTREE,\n" +
+  "  location POINT INDEX RTREE\n" +
+  ") FROM FILE 'dataset/Airbnb_1k.csv';\n" +
+  "\n" +
+  "SELECT * FROM airbnb WHERE price BETWEEN 100 AND 200;"
 
 export default function App() {
   const [sql, setSql]         = useState(DEFAULT_SQL)
