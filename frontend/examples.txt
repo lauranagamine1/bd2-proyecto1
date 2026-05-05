@@ -38,11 +38,39 @@ CREATE TABLE airbnb (
 ) FROM FILE 'dataset/Airbnb_1k.csv';
 
 
-SELECT * FROM airbnb_sin_indices WHERE id = 1001254;
-SELECT * FROM airbnb_sin_indices WHERE price = 966;
-SELECT * FROM airbnb_sin_indices WHERE price BETWEEN 100 AND 200;
-SELECT * FROM airbnb_sin_indices WHERE location IN (POINT(40.75362, -73.98377), K 5);
-SELECT * FROM airbnb_sin_indices WHERE location IN (POINT(40.75362, -73.98377), RADIUS 0.02);
+SELECT * FROM airbnb WHERE id = 1001254;
+SELECT * FROM airbnb WHERE price = 966;
+SELECT * FROM airbnb WHERE price BETWEEN 100 AND 200;
+SELECT * FROM airbnb WHERE location IN (POINT(40.75362, -73.98377), K 5);
+SELECT * FROM airbnb WHERE location IN (POINT(40.75362, -73.98377), RADIUS 0.02);
+
+
+***CSV - AIRBNB CON SEQUENTIAL
+
+CREATE TABLE airbnb_sequential (
+  id INT INDEX SEQUENTIAL,
+  name VARCHAR(200),
+  price INT INDEX SEQUENTIAL,
+  location POINT
+) FROM FILE 'dataset/Airbnb_1k.csv';
+
+SELECT * FROM airbnb_sequential WHERE id = 1001254;
+SELECT * FROM airbnb_sequential WHERE id BETWEEN 1000000 AND 1001000;
+SELECT * FROM airbnb_sequential WHERE price = 150;
+SELECT * FROM airbnb_sequential WHERE price BETWEEN 50 AND 100;
+
+INSERT INTO airbnb_sequential VALUES (9000001, 'Casa Nueva', 200, POINT(40.75, -73.98));
+INSERT INTO airbnb_sequential VALUES (9000002, 'Loft Centro', 85, POINT(40.71, -74.01));
+INSERT INTO airbnb_sequential VALUES (9000003, 'Estudio Moderno', 120, POINT(40.68, -73.95));
+
+SELECT * FROM airbnb_sequential WHERE id = 9000001;
+SELECT * FROM airbnb_sequential WHERE price BETWEEN 80 AND 130;
+SELECT * FROM airbnb_sequential WHERE id BETWEEN 9000001 AND 9000003;
+
+DELETE FROM airbnb_sequential WHERE id = 9000002;
+
+SELECT * FROM airbnb_sequential WHERE id = 9000002;
+SELECT * FROM airbnb_sequential WHERE id BETWEEN 9000001 AND 9000003;
 
 
 ***CSV - AIRBNB INSERT Y DELETE
