@@ -223,6 +223,26 @@ header h1 {
 .run-btn:active:not(:disabled) { transform: translateY(0); }
 .run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.dataset-note {
+  margin-top: 0.75rem;
+  font-size: 0.78rem;
+  color: #9b7bb5;
+  background: #f5eeff;
+  border: 1px solid #e0ccf0;
+  border-radius: 7px;
+  padding: 0.5rem 0.85rem;
+  line-height: 1.5;
+}
+
+.dataset-note code {
+  font-family: "Fira Code", "Cascadia Code", monospace;
+  background: #ecdff7;
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  font-size: 0.85em;
+  color: #7c4fa0;
+}
+
 .spinner {
   width: 13px;
   height: 13px;

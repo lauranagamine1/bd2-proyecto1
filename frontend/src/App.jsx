@@ -324,6 +324,9 @@ export default function App() {
           <button onClick={runQuery} disabled={loading} className="run-btn">
             {loading ? <><span className="spinner" /> Ejecutando…</> : "▶ Ejecutar"}
           </button>
+          <p className="dataset-note">
+            Para cargar un CSV usa <code>FROM FILE 'dataset/archivo.csv'</code>. El archivo debe estar en la carpeta <code>/dataset</code>.
+          </p>
         </section>
 
         {error && <div className="error-box">{error}</div>}
