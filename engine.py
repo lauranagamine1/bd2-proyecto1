@@ -5,6 +5,7 @@ import os
 sys.path.insert(0, "parser")
 sys.path.insert(0, "indexes")
 sys.path.insert(0, "manager")
+sys.path.insert(0, "external")
 
 from parser import parse_sql, ParseError
 from scanner import ScannerError
@@ -26,16 +27,19 @@ class Engine:
         self._db = DBManager(base_path=data_dir, buffer_manager=self._bm)
         self._tables: dict[str, dict] = {}
         self._schemas: dict[str, list] = {}
+        self._used_merge_sort = False
 
     def stats(self) -> dict:
         return {
-            "disk":   self._fm.stats,
-            "buffer": self._bm.stats,
+            "disk":        self._fm.stats,
+            "buffer":      self._bm.stats,
+            "merge_sort":  self._used_merge_sort,
         }
 
     def reset_stats(self):
         self._fm.reset_stats()
         self._bm.reset_stats()
+        self._used_merge_sort = False
 
     def run(self, sql: str) -> list:
         try:
@@ -132,32 +136,37 @@ class Engine:
     # --- SELECT ---
 
     def _select(self, node: dict):
-        table = node["table"]
-        cond = node["condition"]
+        table    = node["table"]
+        cond     = node["condition"]
+        order_by = node.get("order_by")
 
         if cond is None:
-            return self._db.select_all(table)
+            rows = self._db.select_all(table)
+        else:
+            col = cond["column"]
+            if cond["type"] == "EQUALITY":
+                rows = self._db.select_equal(table, col, self._value_for_db(cond["value"]))
+            elif cond["type"] == "RANGE":
+                rows = self._db.select_range(
+                    table, col,
+                    self._value_for_db(cond["low"]),
+                    self._value_for_db(cond["high"]),
+                )
+            elif cond["type"] == "SPATIAL_RADIUS":
+                rows = self._db.select_spatial_radius(table, col, self._value_for_db(cond["point"]), cond["radius"])
+            elif cond["type"] == "SPATIAL_KNN":
+                rows = self._db.select_spatial_knn(table, col, self._value_for_db(cond["point"]), cond["k"])
+            else:
+                raise EngineError(f"Condición no implementada: {cond['type']}")
 
-        col  = cond["column"]
-
-        if cond["type"] == "EQUALITY":
-            return self._db.select_equal(table, col, self._value_for_db(cond["value"]))
-
-        elif cond["type"] == "RANGE":
-            return self._db.select_range(
-                table,
-                col,
-                self._value_for_db(cond["low"]),
-                self._value_for_db(cond["high"]),
+        if order_by:
+            rows = self._db.sort_by(
+                table, order_by["column"], order_by["direction"],
+                rows, self._fm,
             )
+            self._used_merge_sort = True
 
-        elif cond["type"] == "SPATIAL_RADIUS":
-            return self._db.select_spatial_radius(table, col, self._value_for_db(cond["point"]), cond["radius"])
-
-        elif cond["type"] == "SPATIAL_KNN":
-            return self._db.select_spatial_knn(table, col, self._value_for_db(cond["point"]), cond["k"])
-
-        raise EngineError(f"Condición no implementada: {cond['type']}")
+        return rows
 
     def _select_all(self, table: str) -> list:
         return self._db.select_all(table)

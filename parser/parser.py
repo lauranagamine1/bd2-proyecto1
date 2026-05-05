@@ -137,7 +137,15 @@ class Parser:
         condition = None
         if self._match(TokenType.WHERE):
             condition = self._parse_condition()
-        return _node("SELECT", table=table, condition=condition)
+        order_by = None
+        if self._match(TokenType.ORDER):
+            self._expect(TokenType.BY)
+            col = self._expect(TokenType.IDENTIFIER).value
+            direction = "DESC" if self._match(TokenType.DESC) else "ASC"
+            if direction == "ASC":
+                self._match(TokenType.ASC)
+            order_by = {"column": col, "direction": direction}
+        return _node("SELECT", table=table, condition=condition, order_by=order_by)
 
     def _parse_condition(self) -> dict:
         col = self._expect(TokenType.IDENTIFIER).value
