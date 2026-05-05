@@ -110,7 +110,7 @@ class DBManager:
         if column.index_type == IndexType.EXTHASH:
             return ExtendibleHash(self.get_hash_index_path(table_name, column.name), self.buffer_manager, fb=24)
         if column.index_type == IndexType.SEQFILE:
-            return SequentialFile(self.get_index_path(table_name, column.name), self.buffer_manager)
+            return SequentialFile(self.get_index_path(table_name, column.name), None)
         if column.index_type == IndexType.BTREE:
             return BPlusTree(
                 self.get_index_path(table_name, column.name),
