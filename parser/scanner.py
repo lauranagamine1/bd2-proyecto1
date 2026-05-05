@@ -31,6 +31,11 @@ class TokenType(Enum):
     HASH       = auto()
     BTREE      = auto()
     RTREE      = auto()
+    # ORDER BY
+    ORDER = auto()
+    BY    = auto()
+    ASC   = auto()
+    DESC  = auto()
     # Boolean literals
     TRUE  = auto()
     FALSE = auto()
@@ -77,6 +82,10 @@ KEYWORDS: dict[str, TokenType] = {
     "rtree":      TokenType.RTREE,
     "true":       TokenType.TRUE,
     "false":      TokenType.FALSE,
+    "order":      TokenType.ORDER,
+    "by":         TokenType.BY,
+    "asc":        TokenType.ASC,
+    "desc":       TokenType.DESC,
 }
 
 

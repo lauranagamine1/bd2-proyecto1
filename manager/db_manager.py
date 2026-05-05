@@ -9,13 +9,16 @@ from schemas import Column, DataType, IndexType, Record, Table
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 INDEXES_DIR = BASE_DIR / "indexes"
-if str(INDEXES_DIR) not in sys.path:
-    sys.path.append(str(INDEXES_DIR))
+EXTERNAL_DIR = BASE_DIR / "external"
+for _d in (INDEXES_DIR, EXTERNAL_DIR):
+    if str(_d) not in sys.path:
+        sys.path.append(str(_d))
 
 from b_tree import BPlusTree
 from extendible_hashing import ExtendibleHash
 from r_tree import RTree
 from sequential_file import SequentialFile
+from merge_sort import MergeSort
 
 class DBManager:
     def __init__(self, base_path="data", buffer_manager=None):
@@ -578,6 +581,90 @@ class DBManager:
             row["_distance"] = round(distance, 4)
             results.append(row)
         return results
+
+    def sort_by(self, table_name: str, column_name: str, direction: str,
+                rows: list[dict], file_manager) -> list[dict]:
+        if not rows:
+            return rows
+
+        print(f"[MergeSort] Ordenando {len(rows)} registros por '{column_name}' {direction}", flush=True)
+
+        table  = self.get_schema(table_name)
+        column = self._require_column(table, column_name)
+
+        # calcula el offset y formato de la clave dentro del registro empaquetado
+        key_offset = 0
+        import struct as _struct
+        from schemas import calc_record_format
+        for col in table.columns:
+            if col.name == column_name:
+                break
+            fmt = calc_record_format([col])
+            key_offset += _struct.calcsize(fmt)
+
+        key_fmt = {
+            DataType.INT:    "i",
+            DataType.FLOAT:  "d",
+            DataType.BOOL:   "?",
+        }.get(column.data_type)
+
+        if column.data_type == DataType.STRING:
+            key_fmt = f"{column.data_size}s"
+        elif column.data_type == DataType.POINT:
+            key_fmt = "d"  # ordena por coordenada x
+
+        record_size = _struct.calcsize(calc_record_format(table.columns))
+
+        import tempfile
+        tmp_in  = tempfile.mktemp(suffix=".sort.bin")
+        tmp_out = tempfile.mktemp(suffix=".sort.bin")
+
+        try:
+            # escribe los rows al archivo temporal en formato binario
+            from schemas import Record as _Record
+            records_bin = [
+                _Record(table, [row[col.name] if col.data_type != DataType.POINT
+                                else (row[col.name]["x"], row[col.name]["y"])
+                                for col in table.columns]).pack()
+                for row in rows
+            ]
+
+            PAGE_SIZE = 4096
+            rpp = PAGE_SIZE // record_size
+            open(tmp_in, "wb").close()
+            page_id = 0
+            for i in range(0, len(records_bin), rpp):
+                batch = records_bin[i: i + rpp]
+                page = bytearray(PAGE_SIZE)
+                for j, rec in enumerate(batch):
+                    page[j * record_size: (j + 1) * record_size] = rec
+                file_manager.write_page(tmp_in, page_id, bytes(page))
+                page_id += 1
+
+            ms = MergeSort(file_manager, record_size, key_offset, key_fmt, buffer_pages=8)
+            ms.sort(tmp_in, tmp_out)
+
+            # lee el resultado ordenado
+            from schemas import Record as _Record
+            sorted_rows = []
+            total_pages = file_manager.page_count(tmp_out)
+            for pid in range(total_pages):
+                page = file_manager.read_page(tmp_out, pid)
+                for slot in range(rpp):
+                    offset = slot * record_size
+                    raw = page[offset: offset + record_size]
+                    if raw == b"\x00" * record_size:
+                        break
+                    rec = _Record.unpack(table, raw)
+                    sorted_rows.append(self._record_to_dict(table, rec))
+
+            if direction == "DESC":
+                sorted_rows.reverse()
+            return sorted_rows
+        finally:
+            for p in (tmp_in, tmp_out):
+                if os.path.exists(p):
+                    os.remove(p)
 
     @staticmethod
     def pack_record_id(record_id: int) -> bytes:
