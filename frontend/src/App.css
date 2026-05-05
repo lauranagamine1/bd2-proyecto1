@@ -223,6 +223,31 @@ header h1 {
 .run-btn:active:not(:disabled) { transform: translateY(0); }
 .run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.stats-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.merge-sort-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: linear-gradient(135deg, #d4f0e0, #b8e8cc);
+  color: #2a7a50;
+  border: 1.5px solid #8ed4b0;
+  border-radius: 7px;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.merge-sort-badge::before {
+  content: "↕";
+  font-size: 0.9rem;
+}
+
 .dataset-note {
   margin-top: 0.75rem;
   font-size: 0.78rem;

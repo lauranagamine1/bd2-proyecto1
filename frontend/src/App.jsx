@@ -94,28 +94,34 @@ function StatsPanel({ stats }) {
       hits: stats?.buffer?.hits ?? "0",
       misses: stats?.buffer?.misses ?? "0",
     },
+    merge_sort: stats?.merge_sort ?? false,
   }
   return (
-    <div className="stats">
-      <div className="stat-item">
-        <span className="stat-label">Tiempo</span>
-        <span className="stat-value">{display.time_ms} ms</span>
-      </div>
-      <div className="stat-item">
-        <span className="stat-label">Lecturas disco</span>
-        <span className="stat-value">{display.disk.reads}</span>
-      </div>
-      <div className="stat-item">
-        <span className="stat-label">Escrituras disco</span>
-        <span className="stat-value">{display.disk.writes}</span>
-      </div>
-      <div className="stat-item">
-        <span className="stat-label">Buffer hits</span>
-        <span className="stat-value hit">{display.buffer.hits}</span>
-      </div>
-      <div className="stat-item">
-        <span className="stat-label">Buffer misses</span>
-        <span className="stat-value miss">{display.buffer.misses}</span>
+    <div className="stats-wrap">
+      {display.merge_sort && (
+        <div className="merge-sort-badge">Ext. Merge Sort activo</div>
+      )}
+      <div className="stats">
+        <div className="stat-item">
+          <span className="stat-label">Tiempo</span>
+          <span className="stat-value">{display.time_ms} ms</span>
+        </div>
+        <div className="stat-item">
+          <span className="stat-label">Lecturas disco</span>
+          <span className="stat-value">{display.disk.reads}</span>
+        </div>
+        <div className="stat-item">
+          <span className="stat-label">Escrituras disco</span>
+          <span className="stat-value">{display.disk.writes}</span>
+        </div>
+        <div className="stat-item">
+          <span className="stat-label">Buffer hits</span>
+          <span className="stat-value hit">{display.buffer.hits}</span>
+        </div>
+        <div className="stat-item">
+          <span className="stat-label">Buffer misses</span>
+          <span className="stat-value miss">{display.buffer.misses}</span>
+        </div>
       </div>
     </div>
   )
