@@ -4,10 +4,10 @@
 
 | Nombre | GitHub |
 |---|---|
-| Laura Gabriela Nagamine Oshiro | [@lauranagamine1](https://github.com/lauranagamine1) |
-| Sofía Valentina Ku Paredes | [@sofkp](https://github.com/sofkp) |
-| Luis Anthony Romero Padilla | [@LuixRom](https://github.com/LuixRom) |
-| María Karolay Tamayo Hilario | [@karolaytamayoh](https://github.com/karolaytamayoh) |
+| Laura Gabriela Nagamine Oshiro | [lauranagamine1](https://github.com/lauranagamine1) |
+| Sofía Valentina Ku Paredes | [sofkp](https://github.com/sofkp) |
+| Luis Anthony Romero Padilla | [LuixRom](https://github.com/LuixRom) |
+| María Karolay Tamayo Hilario | [karolaytamayoh](https://github.com/karolaytamayoh) |
 
 ## ¿Qué es esto?
 
