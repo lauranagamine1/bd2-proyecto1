@@ -30,10 +30,19 @@ class Engine:
         self._used_merge_sort = False
 
     def stats(self) -> dict:
+        bm = self._bm.stats
         return {
-            "disk":        self._fm.stats,
-            "buffer":      self._bm.stats,
-            "merge_sort":  self._used_merge_sort,
+            "disk": {
+                "reads":  bm["reads"],
+                "writes": bm["writes"],
+            },
+            "buffer": {
+                "hits":      bm["hits"],
+                "misses":    bm["misses"],
+                "pool_used": bm["pool_used"],
+                "pool_size": bm["pool_size"],
+            },
+            "merge_sort": self._used_merge_sort,
         }
 
     def reset_stats(self):
@@ -162,7 +171,7 @@ class Engine:
         if order_by:
             rows = self._db.sort_by(
                 table, order_by["column"], order_by["direction"],
-                rows, self._fm,
+                rows, self._bm,
             )
             self._used_merge_sort = True
 
