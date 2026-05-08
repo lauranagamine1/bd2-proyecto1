@@ -36,20 +36,24 @@ class BufferManager:
         
         self._hits   = 0
         self._misses = 0
+        self._reads  = 0
+        self._writes = 0
 
     @property
     def stats(self) -> dict:
         with self._pool_lock:
             return {
-                "hits":   self._hits,
-                "misses": self._misses,
+                "hits":      self._hits,
+                "misses":    self._misses,
+                "reads":     self._reads,
+                "writes":    self._writes,
                 "pool_used": len(self._pool),
                 "pool_size": self._pool_size,
             }
 
     def reset_stats(self):
         with self._pool_lock:
-            self._hits = self._misses = 0
+            self._hits = self._misses = self._reads = self._writes = 0
 
     def _get_page_lock(self, key):
         with self._pool_lock:
@@ -103,37 +107,40 @@ class BufferManager:
 
     def read_page(self, path: str, page_id: int) -> bytes:
         key = (path, page_id)
-        
+
         if TransactionLogger:
             TransactionLogger().log(threading.current_thread().name, "READ", f"Leyendo {key}")
-            
+
         with self._pool_lock:
             if key in self._pool:
                 self._hits += 1
+                self._reads += 1
                 self._pool.move_to_end(key)
                 self._pool[key][2] += 1 # pin
                 return self._pool[key][0]
-            
+
             self._misses += 1
+            self._reads += 1
         data = self._fm.read_page(path, page_id)
-        
+
         with self._pool_lock:
             if key in self._pool:
                 self._pool.move_to_end(key)
                 self._pool[key][2] += 1
                 return self._pool[key][0]
-                
+
             self._load_into_pool(key, data, dirty=False)
             self._pool[key][2] += 1
             return data
 
     def write_page(self, path: str, page_id: int, data: bytes):
         key = (path, page_id)
-        
+
         if TransactionLogger:
             TransactionLogger().log(threading.current_thread().name, "WRITE", f"Escribiendo {key}")
-            
+
         with self._pool_lock:
+            self._writes += 1
             if key in self._pool:
                 self._pool[key][0] = data
                 self._pool[key][1] = True
@@ -151,6 +158,9 @@ class BufferManager:
         with self._pool_lock:
             self._load_into_pool(key, data, dirty=False)
         return page_id
+
+    def page_count(self, path: str) -> int:
+        return self._fm.page_count(path)
 
     def unpin_page(self, path: str, page_id: int):
         key = (path, page_id)
