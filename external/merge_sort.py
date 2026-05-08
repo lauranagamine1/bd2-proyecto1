@@ -55,10 +55,8 @@ class MergeSort:
     def sort(self, input_path: str, output_path: str) -> dict:
         """
         Ordena el archivo `input_path` y escribe el resultado en `output_path`.
-        Retorna estadísticas de I/O.
+        Retorna estadísticas de I/O acumuladas (no resetea el FileManager).
         """
-        self._fm.reset_stats()
-
         total_records = self._record_count(input_path)
         if total_records == 0:
             open(output_path, "wb").close()

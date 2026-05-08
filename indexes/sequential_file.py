@@ -36,28 +36,52 @@ class SequentialFile:
                 open(path, "wb").close()
 
     @contextmanager
-    def _lock_and_pin(self, path: str, page_id: int):
+    def _lock_and_pin(self, path: str, page_id: int, lock_type: str = "exclusive"):
         if self._bm:
-            self._bm.lock_page(path, page_id)
+            self._bm.lock_page(path, page_id, lock_type=lock_type)
             try:
                 yield
             finally:
-                self._bm.unlock_page(path, page_id)
+                self._bm.unlock_page(path, page_id, lock_type=lock_type)
                 self._bm.unpin_page(path, page_id)
         else:
             yield
 
     def _read_raw(self, path: str, offset: int, size: int) -> bytes:
         if self._bm:
-            # calcula qué página contiene el offset y lee desde ahí
             page_id = offset // PAGE_SIZE
             page_off = offset % PAGE_SIZE
-            with self._lock_and_pin(path, page_id):
+            with self._lock_and_pin(path, page_id, lock_type="shared"):
                 page = self._bm.read_page(path, page_id)
                 return page[page_off:page_off + size]
         with open(path, "rb") as f:
             f.seek(offset)
             return f.read(size)
+
+    def _read_all_records(self, path: str) -> list[tuple]:
+        """Lee todos los registros de un archivo en orden, página a página."""
+        n = self._record_count(path)
+        if n == 0:
+            return []
+        total_pages = (n * RECORD_SIZE + PAGE_SIZE - 1) // PAGE_SIZE
+        records = []
+        if self._bm:
+            for pid in range(total_pages):
+                with self._lock_and_pin(path, pid, lock_type="shared"):
+                    page = self._bm.read_page(path, pid)
+                rpp = PAGE_SIZE // RECORD_SIZE
+                for slot in range(rpp):
+                    off = slot * RECORD_SIZE
+                    raw = page[off:off + RECORD_SIZE]
+                    if len(raw) < RECORD_SIZE:
+                        break
+                    records.append(_unpack(raw))
+        else:
+            with open(path, "rb") as f:
+                raw = f.read()
+            for i in range(len(raw) // RECORD_SIZE):
+                records.append(_unpack(raw[i * RECORD_SIZE:(i + 1) * RECORD_SIZE]))
+        return records
 
     def _write_raw(self, path: str, offset: int, data: bytes):
         if self._bm:
@@ -130,39 +154,27 @@ class SequentialFile:
 
     def range_search(self, low: float, high: float) -> list[bytes]:
         results = []
-        n = self._record_count(self._main)
+        main_records = self._read_all_records(self._main)
+        n = len(main_records)
         if n > 0:
             lo, hi = 0, n - 1
             start = n
-            # localiza el primer registro >= low con búsqueda binaria
             while lo <= hi:
                 mid = (lo + hi) // 2
-                rec = self._read_record(self._main, mid)
-                if rec is None:
-                    break
-                rkey, _, _, deleted = rec
+                rkey, _, _, deleted = main_records[mid]
                 if rkey >= low:
-                    if not deleted:
-                        start = mid
+                    start = mid
                     hi = mid - 1
                 else:
                     lo = mid + 1
             for i in range(start, n):
-                rec = self._read_record(self._main, i)
-                if rec is None:
-                    break
-                rkey, rdata, _, deleted = rec
+                rkey, rdata, _, deleted = main_records[i]
                 if rkey > high:
                     break
                 if not deleted:
                     results.append(rdata)
 
-        # el auxiliar no está ordenado, hay que recorrerlo completo
-        for i in range(self._record_count(self._aux)):
-            rec = self._read_record(self._aux, i)
-            if rec is None:
-                break
-            rkey, rdata, _, deleted = rec
+        for rkey, rdata, _, deleted in self._read_all_records(self._aux):
             if not deleted and low <= rkey <= high:
                 results.append(rdata)
 
@@ -204,10 +216,9 @@ class SequentialFile:
     def _rebuild(self):
         records = []
         for path in (self._main, self._aux):
-            for i in range(self._record_count(path)):
-                rec = self._read_record(path, i)
-                if rec and not rec[3]:
-                    records.append((rec[0], rec[1]))
+            for key, data, _, deleted in self._read_all_records(path):
+                if not deleted:
+                    records.append((key, data))
         records.sort(key=lambda r: r[0])
 
         if self._bm:
@@ -225,10 +236,9 @@ class SequentialFile:
     def scan_all(self) -> list[bytes]:
         results = []
         for path in (self._main, self._aux):
-            for i in range(self._record_count(path)):
-                rec = self._read_record(path, i)
-                if rec and not rec[3]:
-                    results.append(rec[1])
+            for _, rdata, _, deleted in self._read_all_records(path):
+                if not deleted:
+                    results.append(rdata)
         return results
 
     def dump(self):
