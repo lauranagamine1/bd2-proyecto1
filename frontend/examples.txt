@@ -55,8 +55,8 @@ CREATE TABLE airbnb_sequential (
 ) FROM FILE 'dataset/Airbnb_1k.csv';
 
 SELECT * FROM airbnb_sequential WHERE id = 1001254;
-SELECT * FROM airbnb_sequential WHERE id BETWEEN 1000000 AND 1001000;
-SELECT * FROM airbnb_sequential WHERE price = 150;
+SELECT * FROM airbnb_sequential WHERE id BETWEEN 1000000 AND 1004000;
+SELECT * FROM airbnb_sequential WHERE price = 200;
 SELECT * FROM airbnb_sequential WHERE price BETWEEN 50 AND 100;
 
 INSERT INTO airbnb_sequential VALUES (9000001, 'Casa Nueva', 200, POINT(40.75, -73.98));
@@ -86,3 +86,7 @@ DELETE FROM airbnb_insert_delete WHERE id = 9999999;
 SELECT * FROM airbnb_insert_delete WHERE id = 9999999;
 SELECT * FROM airbnb_insert_delete WHERE price BETWEEN 120 AND 130;
 SELECT * FROM airbnb_insert_delete WHERE location IN (POINT(40.75, -73.98), K 3);
+
+** MERGE SORT
+
+SELECT * FROM airbnb ORDER BY price ASC;
