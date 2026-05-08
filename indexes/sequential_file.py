@@ -29,78 +29,51 @@ class SequentialFile:
     def __init__(self, filepath: str, buffer_manager=None):
         self._main = filepath + ".bin"
         self._aux  = filepath + ".aux"
-        self._bm   = buffer_manager
         self._fm   = buffer_manager._fm if buffer_manager else None
+        self._handles: dict[str, object] = {}
         for path in (self._main, self._aux):
             if not os.path.exists(path):
                 open(path, "wb").close()
+            self._handles[path] = open(path, "r+b")
 
-    @contextmanager
-    def _lock_and_pin(self, path: str, page_id: int, lock_type: str = "exclusive"):
-        if self._bm:
-            self._bm.lock_page(path, page_id, lock_type=lock_type)
-            try:
-                yield
-            finally:
-                self._bm.unlock_page(path, page_id, lock_type=lock_type)
-                self._bm.unpin_page(path, page_id)
-        else:
-            yield
+    def _fh(self, path: str):
+        """Devuelve el file handle abierto para el path."""
+        return self._handles[path]
 
     def _read_raw(self, path: str, offset: int, size: int) -> bytes:
-        if self._bm:
-            page_id = offset // PAGE_SIZE
-            page_off = offset % PAGE_SIZE
-            with self._lock_and_pin(path, page_id, lock_type="shared"):
-                page = self._bm.read_page(path, page_id)
-                return page[page_off:page_off + size]
-        with open(path, "rb") as f:
-            f.seek(offset)
-            return f.read(size)
+        fh = self._fh(path)
+        fh.seek(offset)
+        raw = fh.read(size)
+        if self._fm:
+            self._fm._reads += 1
+        return raw
 
     def _read_all_records(self, path: str) -> list[tuple]:
-        """Lee todos los registros de un archivo en orden, página a página."""
-        n = self._record_count(path)
-        if n == 0:
+        """Lee todos los registros del archivo de una sola vez."""
+        fh = self._fh(path)
+        fh.seek(0, 2)
+        size = fh.tell()
+        if size == 0:
             return []
-        total_pages = (n * RECORD_SIZE + PAGE_SIZE - 1) // PAGE_SIZE
-        records = []
-        if self._bm:
-            for pid in range(total_pages):
-                with self._lock_and_pin(path, pid, lock_type="shared"):
-                    page = self._bm.read_page(path, pid)
-                rpp = PAGE_SIZE // RECORD_SIZE
-                for slot in range(rpp):
-                    off = slot * RECORD_SIZE
-                    raw = page[off:off + RECORD_SIZE]
-                    if len(raw) < RECORD_SIZE:
-                        break
-                    records.append(_unpack(raw))
-        else:
-            with open(path, "rb") as f:
-                raw = f.read()
-            for i in range(len(raw) // RECORD_SIZE):
-                records.append(_unpack(raw[i * RECORD_SIZE:(i + 1) * RECORD_SIZE]))
-        return records
+        fh.seek(0)
+        raw = fh.read()
+        if self._fm:
+            self._fm._reads += 1
+        n = len(raw) // RECORD_SIZE
+        return [_unpack(raw[i * RECORD_SIZE:(i + 1) * RECORD_SIZE]) for i in range(n)]
 
     def _write_raw(self, path: str, offset: int, data: bytes):
-        if self._bm:
-            page_id  = offset // PAGE_SIZE
-            page_off = offset % PAGE_SIZE
-            with self._lock_and_pin(path, page_id):
-                # si la página aún no existe en disco, extiende el archivo
-                while page_id >= self._fm.page_count(path):
-                    self._fm.append_page(path, b"\x00" * PAGE_SIZE)
-                page = bytearray(self._bm.read_page(path, page_id))
-                page[page_off:page_off + len(data)] = data
-                self._bm.write_page(path, page_id, bytes(page))
-        else:
-            with open(path, "r+b" if os.path.getsize(path) > 0 else "wb") as f:
-                f.seek(offset)
-                f.write(data)
+        fh = self._fh(path)
+        fh.seek(offset)
+        fh.write(data)
+        fh.flush()
+        if self._fm:
+            self._fm._writes += 1
 
     def _record_count(self, path: str) -> int:
-        return os.path.getsize(path) // RECORD_SIZE
+        fh = self._fh(path)
+        fh.seek(0, 2)
+        return fh.tell() // RECORD_SIZE
 
     def _read_record(self, path: str, index: int) -> tuple | None:
         raw = self._read_raw(path, index * RECORD_SIZE, RECORD_SIZE)
@@ -221,17 +194,19 @@ class SequentialFile:
                     records.append((key, data))
         records.sort(key=lambda r: r[0])
 
-        if self._bm:
-            self._bm.flush(self._main)
-            self._bm.flush(self._aux)
-            self._bm.invalidate(self._main)
-            self._bm.invalidate(self._aux)
+        # truncar y reescribir: cerrar handles, escribir, reabrir
+        for path in (self._main, self._aux):
+            self._handles[path].close()
 
-        # escribe directo a disco para evitar desincronía entre buffer y archivo truncado
         with open(self._main, "wb") as f:
             for key, data in records:
                 f.write(_pack(key, data, NO_NEXT, 0))
+            if self._fm:
+                self._fm._writes += 1
         open(self._aux, "wb").close()
+
+        for path in (self._main, self._aux):
+            self._handles[path] = open(path, "r+b")
 
     def scan_all(self) -> list[bytes]:
         results = []

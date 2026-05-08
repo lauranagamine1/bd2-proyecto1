@@ -31,10 +31,11 @@ class Engine:
 
     def stats(self) -> dict:
         bm = self._bm.stats
+        fm = self._fm.stats
         return {
             "disk": {
-                "reads":  bm["reads"],
-                "writes": bm["writes"],
+                "reads":  bm["reads"]  + fm["reads"],
+                "writes": bm["writes"] + fm["writes"],
             },
             "buffer": {
                 "hits":      bm["hits"],
@@ -169,10 +170,14 @@ class Engine:
                 raise EngineError(f"Condición no implementada: {cond['type']}")
 
         if order_by:
+            fm_before = self._fm.stats
             rows = self._db.sort_by(
                 table, order_by["column"], order_by["direction"],
-                rows, self._bm,
+                rows, self._fm,
             )
+            fm_after = self._fm.stats
+            self._bm._reads  += fm_after["reads"]  - fm_before["reads"]
+            self._bm._writes += fm_after["writes"] - fm_before["writes"]
             self._used_merge_sort = True
 
         return rows

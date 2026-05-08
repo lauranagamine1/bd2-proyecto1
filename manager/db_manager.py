@@ -25,6 +25,8 @@ class DBManager:
         self.base_path = base_path
         self.tables_path = os.path.join(base_path, "tables")
         self.indexes = {}
+        self._schema_cache: dict = {}
+        self._record_file_cache: dict = {}
         self.buffer_manager = buffer_manager
         self.last_load_report = {"inserted": 0, "skipped": 0, "errors": []}
         os.makedirs(self.tables_path, exist_ok=True)
@@ -72,20 +74,29 @@ class DBManager:
         os.makedirs(table_path, exist_ok=True)
         with open(os.path.join(table_path, "metadata.dat"), "wb") as file:
             pickle.dump(table, file)
+        self._schema_cache[table.name.lower()] = table
 
     def get_schema(self, table_name: str) -> Table:
+        key = table_name.lower()
+        if key in self._schema_cache:
+            return self._schema_cache[key]
         metadata_path = os.path.join(self.get_table_path(table_name), "metadata.dat")
         if not os.path.exists(metadata_path):
             raise FileNotFoundError(f"Table '{table_name}' does not exist")
         with open(metadata_path, "rb") as file:
-            return pickle.load(file)
+            table = pickle.load(file)
+        self._schema_cache[key] = table
+        return table
 
     def create_record_file(self, table: Table):
         RecordFile(table, self.get_record_path(table.name), self.buffer_manager)
 
     def get_record_file(self, table_name: str) -> RecordFile:
-        table = self.get_schema(table_name)
-        return RecordFile(table, self.get_record_path(table.name), self.buffer_manager)
+        key = table_name.lower()
+        if key not in self._record_file_cache:
+            table = self.get_schema(table_name)
+            self._record_file_cache[key] = RecordFile(table, self.get_record_path(table.name), self.buffer_manager)
+        return self._record_file_cache[key]
 
     def create_indexes(self, table: Table):
         for column in table.columns:
@@ -113,7 +124,7 @@ class DBManager:
         if column.index_type == IndexType.EXTHASH:
             return ExtendibleHash(self.get_hash_index_path(table_name, column.name), self.buffer_manager, fb=24)
         if column.index_type == IndexType.SEQFILE:
-            return SequentialFile(self.get_index_path(table_name, column.name), None)
+            return SequentialFile(self.get_index_path(table_name, column.name), self.buffer_manager)
         if column.index_type == IndexType.BTREE:
             return BPlusTree(
                 self.get_index_path(table_name, column.name),
@@ -180,39 +191,37 @@ class DBManager:
             reader = csv.DictReader(file, delimiter=delimiter)
             record_file = self.get_record_file(table.name)
             seen_primary_values = self.existing_primary_values(table)
-            records_file = open(record_file.path, "r+b")
+            records_file = record_file._fh
 
-            try:
-                next_record_id = record_file._read_next_record_id(records_file)
+            next_record_id = record_file._read_next_record_id(records_file)
 
-                for row_number, row in enumerate(reader, start=2):
-                    if not row or all((value or "").strip() == "" for value in row.values()):
-                        continue
+            for row_number, row in enumerate(reader, start=2):
+                if not row or all((value or "").strip() == "" for value in row.values()):
+                    continue
 
-                    try:
-                        values = [self.csv_value_for_column(row, column) for column in table.columns]
-                        converted_values = [
-                            self.convert_value(value, column.data_type)
-                            for value, column in zip(values, table.columns)
-                        ]
-                        self._validate_primary_key_values(table, converted_values, seen_primary_values)
-                        record = Record(table, converted_values)
-                        record_id = next_record_id
-                        records_file.seek(record_file._record_offset(record_id))
-                        records_file.write(record_file._pack_slot(record))
-                        next_record_id += 1
-                        self.insert_into_indexes(table, record, record_id)
-                        inserted += 1
-                        if max_rows is not None and inserted >= max_rows:
-                            break
-                    except Exception as error:
-                        skipped += 1
-                        if len(errors) < 5:
-                            errors.append(f"fila {row_number}: {error}")
+                try:
+                    values = [self.csv_value_for_column(row, column) for column in table.columns]
+                    converted_values = [
+                        self.convert_value(value, column.data_type)
+                        for value, column in zip(values, table.columns)
+                    ]
+                    self._validate_primary_key_values(table, converted_values, seen_primary_values)
+                    record = Record(table, converted_values)
+                    record_id = next_record_id
+                    records_file.seek(record_file._record_offset(record_id))
+                    records_file.write(record_file._pack_slot(record))
+                    next_record_id += 1
+                    self.insert_into_indexes(table, record, record_id)
+                    inserted += 1
+                    if max_rows is not None and inserted >= max_rows:
+                        break
+                except Exception as error:
+                    skipped += 1
+                    if len(errors) < 5:
+                        errors.append(f"fila {row_number}: {error}")
 
-                record_file._write_next_record_id(records_file, next_record_id)
-            finally:
-                records_file.close()
+            record_file._write_next_record_id(records_file, next_record_id)
+            records_file.flush()
 
         self.last_load_report = {
             "inserted": inserted,
@@ -499,6 +508,8 @@ class DBManager:
         for key in list(self.indexes):
             if key.startswith(prefix):
                 del self.indexes[key]
+        self._schema_cache.pop(table_name.lower(), None)
+        self._record_file_cache.pop(table_name.lower(), None)
 
     @staticmethod
     def format_output_value(column: Column, value):

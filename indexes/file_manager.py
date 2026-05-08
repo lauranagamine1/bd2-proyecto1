@@ -55,6 +55,22 @@ class FileManager:
             return 0
         return os.path.getsize(path) // PAGE_SIZE
 
+    def read_bytes(self, path: str, offset: int, size: int) -> bytes:
+        """Lee bytes arbitrarios del archivo y contabiliza el acceso."""
+        with open(path, "rb") as f:
+            f.seek(offset)
+            raw = f.read(size)
+        self._reads += 1
+        return raw
+
+    def write_bytes(self, path: str, offset: int, data: bytes):
+        """Escribe bytes arbitrarios en el archivo y contabiliza el acceso."""
+        mode = "r+b" if os.path.getsize(path) > 0 else "wb"
+        with open(path, mode) as f:
+            f.seek(offset)
+            f.write(data)
+        self._writes += 1
+
     def ensure_file(self, path: str):
         if not os.path.exists(path):
             open(path, "wb").close()
