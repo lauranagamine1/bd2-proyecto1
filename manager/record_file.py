@@ -172,3 +172,8 @@ class RecordFile:
         )[0]
         record = Record.unpack(self.table, raw_slot[self.slot_header_size:])
         return deleted, record
+
+    def close(self):
+        if hasattr(self, "_fh") and self._fh:
+            self._fh.close()
+            self._fh = None

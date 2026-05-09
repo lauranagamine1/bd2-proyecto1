@@ -241,6 +241,12 @@ header h1 {
   letter-spacing: 0.03em;
 }
 
+.badge.rs {
+  background: linear-gradient(135deg, #d0e0f5, #b8ccf0);
+  color: #2a507a;
+  border-color: #8eb0d4;
+}
+
 .badge::before {
   content: "↕";
   font-size: 0.9rem;
