@@ -28,6 +28,7 @@ class Engine:
         self._tables: dict[str, dict] = {}
         self._schemas: dict[str, list] = {}
         self._used_merge_sort = False
+        self._used_replacement_selection = False
         self._used_hash_join = False
 
     def stats(self) -> dict:
@@ -45,6 +46,7 @@ class Engine:
                 "pool_size": bm["pool_size"],
             },
             "merge_sort": self._used_merge_sort,
+            "replacement_selection": self._used_replacement_selection,
             "hash_join": self._used_hash_join,
         }
 
@@ -52,10 +54,13 @@ class Engine:
         self._fm.reset_stats()
         self._bm.reset_stats()
         self._used_merge_sort = False
+        self._used_replacement_selection = False
         self._used_hash_join = False
 
     def run(self, sql: str) -> list:
         try:
+            # Detectar --replacement antes de parsear
+            use_replacement = "--replacement" in sql.lower()
             nodes = parse_sql(sql)
         except (ScannerError, ParseError) as e:
             raise EngineError(f"Error de sintaxis: {e}")
@@ -63,19 +68,19 @@ class Engine:
         results = []
         for node in nodes:
             try:
-                results.append(self._execute(node))
+                results.append(self._execute(node, use_replacement))
             except (FileNotFoundError, ValueError, RuntimeError, IndexError) as e:
                 raise EngineError(str(e)) from e
         return results
 
-    def _execute(self, node: dict):
+    def _execute(self, node: dict, use_replacement: bool = False):
         t = node["type"]
         if t == "CREATE_TABLE":
             return self._create_table(node)
         if t == "INSERT":
             return self._insert(node)
         if t == "SELECT":
-            return self._select(node)
+            return self._select(node, use_replacement)
         if t == "DELETE":
             return self._delete(node)
         raise EngineError(f"Nodo desconocido: {t}")
@@ -148,7 +153,7 @@ class Engine:
 
     # --- SELECT ---
 
-    def _select(self, node: dict):
+    def _select(self, node: dict, use_replacement: bool = False):
         table    = node["table"]
         join     = node.get("join")
         cond     = node["condition"]
@@ -186,14 +191,19 @@ class Engine:
 
         if order_by:
             fm_before = self._fm.stats
+            algorithm = "replacement" if use_replacement else "merge"
             rows = self._db.sort_by(
                 table, order_by["column"], order_by["direction"],
-                rows, self._fm,
+                rows, self._fm, algorithm=algorithm
             )
             fm_after = self._fm.stats
             self._bm._reads  += fm_after["reads"]  - fm_before["reads"]
             self._bm._writes += fm_after["writes"] - fm_before["writes"]
-            self._used_merge_sort = True
+            
+            if use_replacement:
+                self._used_replacement_selection = True
+            else:
+                self._used_merge_sort = True
 
         return rows
     

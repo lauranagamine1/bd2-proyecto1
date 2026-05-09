@@ -216,6 +216,12 @@ class SequentialFile:
                     results.append(rdata)
         return results
 
+    def close(self):
+        if hasattr(self, "_handles"):
+            for h in self._handles.values():
+                h.close()
+            self._handles = {}
+
     def dump(self):
         print("=== PRINCIPAL ===")
         self._dump_file(self._main)

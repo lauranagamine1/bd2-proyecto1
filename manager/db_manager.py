@@ -20,6 +20,7 @@ from r_tree import RTree
 from sequential_file import SequentialFile
 from merge_sort import MergeSort
 from hash_join import HashJoin
+from replacement_selection import ReplacementSelection
 
 class DBManager:
     def __init__(self, base_path="data", buffer_manager=None):
@@ -500,9 +501,21 @@ class DBManager:
         self.invalidate_buffer_prefix(table_path)
         self.invalidate_buffer_prefix(index_path)
 
+        # Cerrar el archivo de registros si está abierto para evitar WinError 32
+        rf = self._record_file_cache.pop(table_name.lower(), None)
+        if rf:
+            rf.close()
+
         if os.path.exists(table_path):
             shutil.rmtree(table_path)
         if os.path.exists(index_path):
+            # Cerrar los índices que puedan estar abiertos
+            prefix = table_name.lower() + "."
+            keys_to_remove = [k for k in self.indexes.keys() if k.startswith(prefix)]
+            for k in keys_to_remove:
+                idx = self.indexes.pop(k)
+                if hasattr(idx, "close"):
+                    idx.close()
             shutil.rmtree(index_path)
 
         prefix = f"{table_name.lower()}."
@@ -595,11 +608,11 @@ class DBManager:
         return results
 
     def sort_by(self, table_name: str, column_name: str, direction: str,
-                rows: list[dict], file_manager) -> list[dict]:
+                rows: list[dict], file_manager, algorithm: str = "merge") -> list[dict]:
         if not rows:
             return rows
 
-        print(f"[MergeSort] Ordenando {len(rows)} registros por '{column_name}' {direction}", flush=True)
+        print(f"[{'ReplacementSelection' if algorithm == 'replacement' else 'MergeSort'}] Ordenando {len(rows)} registros por '{column_name}' {direction}", flush=True)
 
         table  = self.get_schema(table_name)
         column = self._require_column(table, column_name)
@@ -653,8 +666,30 @@ class DBManager:
                 file_manager.write_page(tmp_in, page_id, bytes(page))
                 page_id += 1
 
-            ms = MergeSort(file_manager, record_size, key_offset, key_fmt, buffer_pages=8)
-            ms.sort(tmp_in, tmp_out)
+            if algorithm == "replacement":
+                rs = ReplacementSelection(file_manager, record_size, key_offset, key_fmt)
+                # ReplacementSelection genera runs, pero no hace el merge final. 
+                # Sin embargo, los requerimientos dicen que ReplacementSelection genera runs.
+                # El método sort_by actual de DBManager parece esperar un resultado final ordenado.
+                # Así que generaremos los runs y luego usaremos la lógica de merge de MergeSort o similar.
+                # Pero para cumplir con la "diferenciación", si el algoritmo es replacement, 
+                # usaremos ReplacementSelection para la fase 1.
+                
+                # Necesitamos un directorio para los runs
+                run_dir = tempfile.mkdtemp(suffix=".runs")
+                rs_stats = rs.generate_runs(tmp_in, run_dir, buffer_pages=8)
+                
+                # Ahora hacemos el merge de los runs generados por RS
+                ms = MergeSort(file_manager, record_size, key_offset, key_fmt, buffer_pages=8)
+                ms._phase2_merge(rs_stats["run_paths"], tmp_out)
+                
+                # Limpiar run_dir
+                if os.path.exists(run_dir):
+                    import shutil
+                    shutil.rmtree(run_dir)
+            else:
+                ms = MergeSort(file_manager, record_size, key_offset, key_fmt, buffer_pages=8)
+                ms.sort(tmp_in, tmp_out)
 
             # lee el resultado ordenado
             from schemas import Record as _Record
