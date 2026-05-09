@@ -38,6 +38,9 @@ class TokenType(Enum):
     BY    = auto()
     ASC   = auto()
     DESC  = auto()
+    # GROUP BY añadido
+    GROUP = auto()
+    COUNT = auto()
     # Boolean literals
     TRUE  = auto()
     FALSE = auto()
@@ -91,6 +94,9 @@ KEYWORDS: dict[str, TokenType] = {
     "desc":       TokenType.DESC,
     "join":       TokenType.JOIN,
     "on":         TokenType.ON,
+    # GROUP BY añadido
+    "group":      TokenType.GROUP,
+    "count":      TokenType.COUNT,
 }
 
 

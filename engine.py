@@ -205,6 +205,11 @@ class Engine:
             else:
                 self._used_merge_sort = True
 
+        # group by añadido - aplicar agrupación si se especificó GROUP BY
+        group_by = node.get("group_by")
+        if group_by:
+            rows = self._apply_group_by(rows, node.get("columns") or [], group_by)
+
         return rows
     
     def _select_join(self, left_table: str, join: dict) -> list:
@@ -259,6 +264,14 @@ class Engine:
 
     def _select_all(self, table: str) -> list:
         return self._db.select_all(table)
+
+    # group by añadido - agrupa filas por columna y cuenta ocurrencias
+    def _apply_group_by(self, rows: list, columns: list, group_col: str) -> list:
+        groups: dict = {}
+        for row in rows:
+            key = row.get(group_col)
+            groups[key] = groups.get(key, 0) + 1
+        return [{group_col: key, "COUNT(*)": count} for key, count in groups.items()]
 
     # --- DELETE ---
 

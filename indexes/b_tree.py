@@ -5,6 +5,10 @@ PAGE_SIZE = 4096
 PTR_SIZE = 8
 DATA_SIZE = 200
 
+#B → is_leaf (0 o 1)
+#h → número de claves
+#q → next_leaf (solo hojas)
+
 HEADER_FMT = "<Bhq"
 HEADER_SIZE = struct.calcsize(HEADER_FMT)
 
@@ -122,7 +126,7 @@ class BPlusTree:
             raw = self._bm.read_page(self._path, pid)
         else:
             with open(self._path, 'rb') as f:
-                f.seek(pid * PAGE_SIZE)
+                f.seek(pid * PAGE_SIZE) # Mover a la pagina pid en el disco
                 raw = f.read(PAGE_SIZE)
         return Node.from_bytes(pid, raw, self._key_fmt, self._key_size)
 

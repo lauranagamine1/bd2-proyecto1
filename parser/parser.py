@@ -131,7 +131,8 @@ class Parser:
 
     def _parse_select(self) -> dict:
         self._expect(TokenType.SELECT)
-        self._expect(TokenType.STAR)
+        # group by añadido - parsear lista de columnas o *
+        columns = self._parse_select_list()
         self._expect(TokenType.FROM)
         table = self._expect(TokenType.IDENTIFIER).value
         join = None
@@ -153,7 +154,33 @@ class Parser:
             if direction == "ASC":
                 self._match(TokenType.ASC)
             order_by = {"column": col, "direction": direction}
-        return _node("SELECT", table=table, join=join, condition=condition, order_by=order_by)
+        # group by añadido - parsear GROUP BY al final
+        group_by = None
+        if self._match(TokenType.GROUP):
+            self._expect(TokenType.BY)
+            group_by = self._expect(TokenType.IDENTIFIER).value
+        return _node("SELECT", table=table, columns=columns, join=join, condition=condition, order_by=order_by, group_by=group_by)
+
+    # group by añadido - parsea la lista de expresiones del SELECT
+    def _parse_select_list(self):
+        if self._check(TokenType.STAR):
+            self._advance()
+            return None  # SELECT * -> sin lista explícita
+        exprs = [self._parse_select_expr()]
+        while self._match(TokenType.COMMA):
+            exprs.append(self._parse_select_expr())
+        return exprs
+
+    # group by añadido - parsea una expresión individual del SELECT
+    def _parse_select_expr(self) -> dict:
+        if self._check(TokenType.COUNT):
+            self._advance()
+            self._expect(TokenType.LPAREN)
+            self._expect(TokenType.STAR)
+            self._expect(TokenType.RPAREN)
+            return {"kind": "COUNT_STAR"}
+        name = self._expect(TokenType.IDENTIFIER).value
+        return {"kind": "COLUMN", "name": name}
 
     def _parse_column_ref(self) -> dict:
         first = self._expect(TokenType.IDENTIFIER).value
