@@ -18,7 +18,7 @@ from b_tree import BPlusTree
 from extendible_hashing import ExtendibleHash
 from r_tree import RTree
 from sequential_file import SequentialFile
-from merge_sort import MergeSort
+from external_sort import ExternalSort
 from hash_join import HashJoin
 from replacement_selection import ReplacementSelection
 
@@ -612,7 +612,7 @@ class DBManager:
         if not rows:
             return rows
 
-        print(f"[{'ReplacementSelection' if algorithm == 'replacement' else 'MergeSort'}] Ordenando {len(rows)} registros por '{column_name}' {direction}", flush=True)
+        print(f"[{'ReplacementSelection' if algorithm == 'replacement' else 'ExternalSort'}] Ordenando {len(rows)} registros por '{column_name}' {direction}", flush=True)
 
         table  = self.get_schema(table_name)
         column = self._require_column(table, column_name)
@@ -668,19 +668,14 @@ class DBManager:
 
             if algorithm == "replacement":
                 rs = ReplacementSelection(file_manager, record_size, key_offset, key_fmt)
-                # ReplacementSelection genera runs, pero no hace el merge final. 
-                # Sin embargo, los requerimientos dicen que ReplacementSelection genera runs.
-                # El método sort_by actual de DBManager parece esperar un resultado final ordenado.
-                # Así que generaremos los runs y luego usaremos la lógica de merge de MergeSort o similar.
-                # Pero para cumplir con la "diferenciación", si el algoritmo es replacement, 
-                # usaremos ReplacementSelection para la fase 1.
+                # ReplacementSelection genera runs (fase 1), ExternalSort hace el merge final (fase 2).
                 
                 # Necesitamos un directorio para los runs
                 run_dir = tempfile.mkdtemp(suffix=".runs")
                 rs_stats = rs.generate_runs(tmp_in, run_dir, buffer_pages=8)
                 
                 # Ahora hacemos el merge de los runs generados por RS
-                ms = MergeSort(file_manager, record_size, key_offset, key_fmt, buffer_pages=8)
+                ms = ExternalSort(file_manager, record_size, key_offset, key_fmt, buffer_pages=8)
                 ms._phase2_merge(rs_stats["run_paths"], tmp_out)
                 
                 # Limpiar run_dir
@@ -688,7 +683,7 @@ class DBManager:
                     import shutil
                     shutil.rmtree(run_dir)
             else:
-                ms = MergeSort(file_manager, record_size, key_offset, key_fmt, buffer_pages=8)
+                ms = ExternalSort(file_manager, record_size, key_offset, key_fmt, buffer_pages=8)
                 ms.sort(tmp_in, tmp_out)
 
             # lee el resultado ordenado

@@ -95,14 +95,14 @@ function StatsPanel({ stats }) {
       hits: stats?.buffer?.hits ?? "0",
       misses: stats?.buffer?.misses ?? "0",
     },
-    merge_sort: stats?.merge_sort ?? false,
+    external_sort: stats?.external_sort ?? false,
     replacement_selection: stats?.replacement_selection ?? false,
     hash_join: stats?.hash_join ?? false,
   }
   return (
     <div className="stats-wrap">
-      {display.merge_sort && (
-        <div className="badge">Ext. Merge Sort activo</div>
+      {display.external_sort && (
+        <div className="badge">External Sort activo</div>
       )}
       {display.replacement_selection && (
         <div className="badge rs">Replacement Selection activo</div>

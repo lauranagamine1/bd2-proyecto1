@@ -27,7 +27,7 @@ class Engine:
         self._db = DBManager(base_path=data_dir, buffer_manager=self._bm)
         self._tables: dict[str, dict] = {}
         self._schemas: dict[str, list] = {}
-        self._used_merge_sort = False
+        self._used_external_sort = False
         self._used_replacement_selection = False
         self._used_hash_join = False
 
@@ -45,7 +45,7 @@ class Engine:
                 "pool_used": bm["pool_used"],
                 "pool_size": bm["pool_size"],
             },
-            "merge_sort": self._used_merge_sort,
+            "external_sort": self._used_external_sort,
             "replacement_selection": self._used_replacement_selection,
             "hash_join": self._used_hash_join,
         }
@@ -53,7 +53,7 @@ class Engine:
     def reset_stats(self):
         self._fm.reset_stats()
         self._bm.reset_stats()
-        self._used_merge_sort = False
+        self._used_external_sort = False
         self._used_replacement_selection = False
         self._used_hash_join = False
 
@@ -203,7 +203,7 @@ class Engine:
             if use_replacement:
                 self._used_replacement_selection = True
             else:
-                self._used_merge_sort = True
+                self._used_external_sort = True
 
         # group by añadido - aplicar agrupación si se especificó GROUP BY
         group_by = node.get("group_by")

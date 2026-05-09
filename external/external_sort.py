@@ -10,9 +10,9 @@ from file_manager import FileManager
 PAGE_SIZE = 4096
 
 
-class MergeSort:
+class ExternalSort:
     """
-    External merge sort sobre un archivo de registros de tamaño fijo.
+    External sort sobre un archivo de registros de tamaño fijo.
 
     Parámetros
     ----------
