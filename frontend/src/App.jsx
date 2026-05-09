@@ -12,6 +12,7 @@ const API = import.meta.env.VITE_API_URL || "http://localhost:8000"
 const KEYWORDS = new Set([
   "SELECT","FROM","WHERE","CREATE","TABLE","INSERT","INTO","VALUES",
   "DELETE","BETWEEN","AND","IN","INDEX","FILE",
+  "JOIN","ON",
   "SEQUENTIAL","HASH","BTREE","RTREE",
   "POINT","RADIUS","K",
 ])
@@ -95,11 +96,15 @@ function StatsPanel({ stats }) {
       misses: stats?.buffer?.misses ?? "0",
     },
     merge_sort: stats?.merge_sort ?? false,
+    hash_join: stats?.hash_join ?? false,
   }
   return (
     <div className="stats-wrap">
       {display.merge_sort && (
-        <div className="merge-sort-badge">Ext. Merge Sort activo</div>
+        <div className="badge">Ext. Merge Sort activo</div>
+      )}
+      {display.hash_join && (
+        <div className="badge">Hash Join activo</div>
       )}
       <div className="stats">
         <div className="stat-item">
@@ -312,7 +317,7 @@ export default function App() {
   return (
     <div className="app">
       <header>
-        <div className="header-icon">🗄️</div>
+        <img className="header-icon" src="/airbnb_dbms.png" alt="AIRBNB DBMS" />
         <div>
           <h1>AIRBNB BD</h1>
           <p className="subtitle">BD2 · Proyecto 1</p>

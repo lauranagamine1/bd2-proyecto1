@@ -66,6 +66,9 @@ Los índices guardan la clave y un puntero/`record_id`.
 ## Estructura
 
 ```text
+external/
+  merge_sort.py          #Merge Sort
+  hash_join.py           #Hash Join 
 parser/
   scanner.py             # tokenizador
   parser.py              # parser SQL -> AST

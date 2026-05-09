@@ -134,6 +134,14 @@ class Parser:
         self._expect(TokenType.STAR)
         self._expect(TokenType.FROM)
         table = self._expect(TokenType.IDENTIFIER).value
+        join = None
+        if self._match(TokenType.JOIN):
+            right_table = self._expect(TokenType.IDENTIFIER).value
+            self._expect(TokenType.ON)
+            left_ref = self._parse_column_ref()
+            self._expect(TokenType.EQUALS)
+            right_ref = self._parse_column_ref()
+            join = {"table": right_table, "left": left_ref, "right": right_ref}
         condition = None
         if self._match(TokenType.WHERE):
             condition = self._parse_condition()
@@ -145,7 +153,14 @@ class Parser:
             if direction == "ASC":
                 self._match(TokenType.ASC)
             order_by = {"column": col, "direction": direction}
-        return _node("SELECT", table=table, condition=condition, order_by=order_by)
+        return _node("SELECT", table=table, join=join, condition=condition, order_by=order_by)
+
+    def _parse_column_ref(self) -> dict:
+        first = self._expect(TokenType.IDENTIFIER).value
+        if self._match(TokenType.DOT):
+            second = self._expect(TokenType.IDENTIFIER).value
+            return {"table": first, "column": second}
+        return {"table": None, "column": first}
 
     def _parse_condition(self) -> dict:
         col = self._expect(TokenType.IDENTIFIER).value

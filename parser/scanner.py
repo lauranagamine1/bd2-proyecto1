@@ -21,6 +21,8 @@ class TokenType(Enum):
     RADIUS   = auto()
     K        = auto()
     INDEX    = auto()
+    JOIN     = auto()
+    ON       = auto()
     # Data types
     INT_TYPE     = auto()
     FLOAT_TYPE   = auto()
@@ -51,6 +53,7 @@ class TokenType(Enum):
     SEMICOLON = auto()
     EQUALS    = auto()
     STAR      = auto()
+    DOT       = auto()
     EOF = auto()
 
 
@@ -86,6 +89,8 @@ KEYWORDS: dict[str, TokenType] = {
     "by":         TokenType.BY,
     "asc":        TokenType.ASC,
     "desc":       TokenType.DESC,
+    "join":       TokenType.JOIN,
+    "on":         TokenType.ON,
 }
 
 
@@ -160,6 +165,7 @@ class Scanner:
             ";": TokenType.SEMICOLON,
             "=": TokenType.EQUALS,
             "*": TokenType.STAR,
+            ".": TokenType.DOT,
         }
         if ch in symbols:
             self._advance()

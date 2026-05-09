@@ -135,7 +135,48 @@ def test_indexed_duplicate_equal_searches():
     print("\n" + "=" * 60)
 
 
+def test_hash_join():
+    print("\n" + "=" * 60)
+    reset_test_data()
+
+    db = DBManager(base_path=str(TEST_DB_PATH))
+    clientes = Table(
+        "clientes",
+        [
+            Column("id", DataType.INT),
+            Column("name", DataType.STRING, data_size=30),
+        ],
+    )
+    ordenes = Table(
+        "ordenes",
+        [
+            Column("id", DataType.INT),
+            Column("cliente_id", DataType.INT),
+            Column("total", DataType.INT),
+        ],
+    )
+    db.create_table(clientes)
+    db.create_table(ordenes)
+
+    db.insert("clientes", ["1", "Ana"])
+    db.insert("clientes", ["2", "Luis"])
+    db.insert("ordenes", ["10", "1", "300"])
+    db.insert("ordenes", ["11", "1", "450"])
+    db.insert("ordenes", ["12", "3", "999"])
+
+    rows = db.hash_join("clientes", "ordenes", "id", "cliente_id")
+    print("hash_join('clientes', 'ordenes', 'id', 'cliente_id'):")
+    print(rows)
+
+    assert len(rows) == 2
+    assert rows[0]["clientes.name"] == "Ana"
+    assert {row["ordenes.total"] for row in rows} == {300, 450}
+    print("\n" + "=" * 60)
+
+
+
 if __name__ == "__main__":
     test_manual_operations()
     test_csv_load()
     test_indexed_duplicate_equal_searches()
+    test_hash_join()

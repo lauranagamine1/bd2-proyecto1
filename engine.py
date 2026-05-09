@@ -28,6 +28,7 @@ class Engine:
         self._tables: dict[str, dict] = {}
         self._schemas: dict[str, list] = {}
         self._used_merge_sort = False
+        self._used_hash_join = False
 
     def stats(self) -> dict:
         bm = self._bm.stats
@@ -44,12 +45,14 @@ class Engine:
                 "pool_size": bm["pool_size"],
             },
             "merge_sort": self._used_merge_sort,
+            "hash_join": self._used_hash_join,
         }
 
     def reset_stats(self):
         self._fm.reset_stats()
         self._bm.reset_stats()
         self._used_merge_sort = False
+        self._used_hash_join = False
 
     def run(self, sql: str) -> list:
         try:
@@ -147,8 +150,20 @@ class Engine:
 
     def _select(self, node: dict):
         table    = node["table"]
+        join     = node.get("join")
         cond     = node["condition"]
         order_by = node.get("order_by")
+
+        if join is not None:
+            if cond is not None:
+                raise EngineError("JOIN con WHERE aun no esta implementado")
+            if order_by:
+                raise EngineError("ORDER BY despues de JOIN aun no esta implementado")
+
+            rows = self._select_join(table, join)
+            self._bm._reads += self._hash_join_page_reads(table, join["table"])
+            self._used_hash_join = True
+            return rows
 
         if cond is None:
             rows = self._db.select_all(table)
@@ -181,6 +196,56 @@ class Engine:
             self._used_merge_sort = True
 
         return rows
+    
+    def _select_join(self, left_table: str, join: dict) -> list:
+        right_table = join["table"]
+        left_ref = self._resolve_join_ref(join["left"], left_table, right_table)
+        right_ref = self._resolve_join_ref(join["right"], left_table, right_table)
+
+        if left_ref["table"] == right_ref["table"]:
+            raise EngineError("JOIN necesita columnas de tablas distintas")
+
+        if left_ref["table"] == right_table:
+            left_ref, right_ref = right_ref, left_ref
+
+        if left_ref["table"] != left_table or right_ref["table"] != right_table:
+            raise EngineError(
+                f"JOIN invalido: se esperaba unir '{left_table}' con '{right_table}'"
+            )
+
+        return self._db.hash_join(left_table, right_table, left_ref["column"], right_ref["column"])
+
+    def _hash_join_page_reads(self, left_table: str, right_table: str) -> int:
+        return 2 * (
+            self._table_scan_pages(left_table) + self._table_scan_pages(right_table)
+        )
+
+    def _table_scan_pages(self, table_name: str) -> int:
+        record_file = self._db.get_record_file(table_name)
+        row_count = record_file.record_count()
+        data_pages = (row_count + record_file.records_per_page - 1) // record_file.records_per_page
+        return 1 + data_pages
+
+    def _resolve_join_ref(self, ref: dict, left_table: str, right_table: str) -> dict:
+        if ref["table"] is not None:
+            if ref["table"] not in (left_table, right_table):
+                raise EngineError(f"Tabla '{ref['table']}' no participa en el JOIN")
+            return ref
+
+        matches = []
+        for table_name in (left_table, right_table):
+            table = self._db.get_schema(table_name)
+            if table.get_column(ref["column"]) is not None:
+                matches.append(table_name)
+
+        if len(matches) == 0:
+            raise EngineError(f"Columna '{ref['column']}' no existe en el JOIN")
+        if len(matches) > 1:
+            raise EngineError(
+                f"Columna '{ref['column']}' es ambigua; usa tabla.columna"
+            )
+        return {"table": matches[0], "column": ref["column"]}
+
 
     def _select_all(self, table: str) -> list:
         return self._db.select_all(table)

@@ -26,7 +26,10 @@ statement ::=
     'CREATE' 'TABLE' IDENTIFIER
         '(' column_def { ',' column_def } ')'
         [ 'FROM' 'FILE' PATH ]
-    | 'SELECT' '*' 'FROM' IDENTIFIER [ 'WHERE' condition ]
+    | 'SELECT' '*' 'FROM' IDENTIFIER
+        [ 'JOIN' IDENTIFIER 'ON' column_ref '=' column_ref ]
+        [ 'WHERE' condition ]
+        [ 'ORDER' 'BY' IDENTIFIER [ 'ASC' | 'DESC' ] ]
     | 'INSERT' 'INTO' IDENTIFIER 'VALUES' '(' value { ',' value } ')'
     | 'DELETE' 'FROM' IDENTIFIER 'WHERE' IDENTIFIER '=' value
 
@@ -44,6 +47,9 @@ condition ::=
     | IDENTIFIER 'BETWEEN' value 'AND' value
     | IDENTIFIER 'IN' '(' point ',' 'RADIUS' NUMBER ')'
     | IDENTIFIER 'IN' '(' point ',' 'K' INT ')'
+
+column_ref ::=
+    IDENTIFIER [ '.' IDENTIFIER ]
 
 value ::=
     INT | FLOAT | STRING | BOOLEAN | point
@@ -71,6 +77,7 @@ CHAR       ::= cualquier carácter excepto "'"
 | `SELECT ... WHERE col BETWEEN v1 AND v2` | `index.range_search(v1, v2)` |
 | `SELECT ... WHERE col IN (POINT(...), RADIUS r)` | `index.range_search(point, r)` |
 | `SELECT ... WHERE col IN (POINT(...), K k)` | `index.knn(point, k)` |
+| `SELECT ... JOIN ... ON t1.col = t2.col` | `HashJoin.join(...)` |
 | `INSERT INTO ... VALUES (...)` | `index.add(record)` |
 | `DELETE FROM ... WHERE col = v` | `index.remove(v)` |
 | `CREATE TABLE ... FROM FILE path` | carga CSV + `index.add(record)` por fila |

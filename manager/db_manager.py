@@ -19,6 +19,7 @@ from extendible_hashing import ExtendibleHash
 from r_tree import RTree
 from sequential_file import SequentialFile
 from merge_sort import MergeSort
+from hash_join import HashJoin
 
 class DBManager:
     def __init__(self, base_path="data", buffer_manager=None):
@@ -676,6 +677,52 @@ class DBManager:
             for p in (tmp_in, tmp_out):
                 if os.path.exists(p):
                     os.remove(p)
+
+    def _scan_rows(self, table):
+        record_file = self.get_record_file(table.name)
+
+        for _, record in record_file.scan_all():
+            yield self._record_to_dict(table, record)
+
+    def _count_rows(self, table):
+        count = 0
+        record_file = self.get_record_file(table.name)
+
+        for _, _ in record_file.scan_all():
+            count += 1
+
+        return count
+    
+    def hash_join(self, left_table_name: str, right_table_name: str, left_column_name: str, 
+                  right_column_name: str) -> tuple[list[dict], dict]:
+
+        left_table = self.get_schema(left_table_name)
+        right_table = self.get_schema(right_table_name)
+
+        left_column = self._require_column(left_table, left_column_name)
+        right_column = self._require_column(right_table, right_column_name)
+
+        if left_column.data_type != right_column.data_type:
+            raise ValueError(f"No se puede hacer JOIN entre tipos distintos: " 
+                             f"{left_column.data_type} y {right_column.data_type}" )
+
+        left_count = self._count_rows(left_table)
+        right_count = self._count_rows(right_table)
+
+        hash_table = HashJoin()
+
+        if left_count <= right_count:
+            rows = hash_table.join(build_rows=self._scan_rows(left_table), probe_rows=self._scan_rows(right_table),
+                               build_key=left_column.name, probe_key=right_column.name, 
+                               build_name=left_table.name, probe_name=right_table.name,
+                               is_left=True, build_size=left_count )
+        else:
+            rows = hash_table.join(build_rows=self._scan_rows(right_table), probe_rows=self._scan_rows(left_table),
+                               build_key=right_column.name, probe_key=left_column.name,
+                               build_name=right_table.name, probe_name=left_table.name,
+                               is_left=False, build_size=right_count )
+
+        return rows
 
     @staticmethod
     def pack_record_id(record_id: int) -> bytes:

@@ -27,6 +27,18 @@ SELECT * FROM airbnb_sin_indices WHERE price BETWEEN 100 AND 200;
 SELECT * FROM airbnb_sin_indices WHERE location IN (POINT(40.75362, -73.98377), K 5);
 SELECT * FROM airbnb_sin_indices WHERE location IN (POINT(40.75362, -73.98377), RADIUS 0.02);
 
+INSERT INTO airbnb VALUES (9999999, 'Test Codex Place', 123, POINT(40.75, -73.98));
+
+SELECT * FROM airbnb WHERE id = 9999999;
+SELECT * FROM airbnb WHERE price BETWEEN 120 AND 130;
+SELECT * FROM airbnb WHERE location IN (POINT(40.75, -73.98), K 3);
+
+DELETE FROM airbnb WHERE id = 9999999;
+
+SELECT * FROM airbnb WHERE id = 9999999;
+SELECT * FROM airbnb WHERE price BETWEEN 120 AND 130;
+SELECT * FROM airbnb WHERE location IN (POINT(40.75, -73.98), K 3);
+
 
 ***CSV - AIRBNB CON HASH, BTREE Y RTREE
 
@@ -72,21 +84,29 @@ DELETE FROM airbnb_sequential WHERE id = 9000002;
 SELECT * FROM airbnb_sequential WHERE id = 9000002;
 SELECT * FROM airbnb_sequential WHERE id BETWEEN 9000001 AND 9000003;
 
-
-***CSV - AIRBNB INSERT Y DELETE
-
-INSERT INTO airbnb_insert_delete VALUES (9999999, 'Test Codex Place', 123, POINT(40.75, -73.98));
-
-SELECT * FROM airbnb_insert_delete WHERE id = 9999999;
-SELECT * FROM airbnb_insert_delete WHERE price BETWEEN 120 AND 130;
-SELECT * FROM airbnb_insert_delete WHERE location IN (POINT(40.75, -73.98), K 3);
-
-DELETE FROM airbnb_insert_delete WHERE id = 9999999;
-
-SELECT * FROM airbnb_insert_delete WHERE id = 9999999;
-SELECT * FROM airbnb_insert_delete WHERE price BETWEEN 120 AND 130;
-SELECT * FROM airbnb_insert_delete WHERE location IN (POINT(40.75, -73.98), K 3);
-
 ** MERGE SORT
 
 SELECT * FROM airbnb ORDER BY price ASC;
+
+***HASH JOIN 1
+
+CREATE TABLE ordenes (id INT, cliente_id INT, total INT);
+INSERT INTO ordenes VALUES (10, 1, 300);
+INSERT INTO ordenes VALUES (11, 1, 450);
+INSERT INTO ordenes VALUES (12, 4, 90);
+
+SELECT * FROM clientes JOIN ordenes ON clientes.id = ordenes.cliente_id;
+
+***HASH JOIN 2
+
+CREATE TABLE reservas (
+  id INT,
+  airbnb_id INT,
+  usuario VARCHAR(50),
+  noches INT
+);
+
+INSERT INTO reservas VALUES (1, 1001254, 'Sofia', 3);
+INSERT INTO reservas VALUES (2, 1002102, 'Laura', 2);
+
+SELECT * FROM airbnb JOIN reservas ON airbnb.id = reservas.airbnb_id;

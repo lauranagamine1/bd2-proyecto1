@@ -16,7 +16,7 @@ body {
 .app {
   max-width: 1440px;
   margin: 0 auto;
-  padding: 1.25rem 1.5rem;
+  padding: 0.75rem 0.75rem;
   height: 100vh;
   display: flex;
   flex-direction: column;
@@ -26,7 +26,7 @@ header {
   display: flex;
   align-items: center;
   gap: 1rem;
-  margin-bottom: 1.25rem;
+  margin-bottom: 0.9rem;
   flex-shrink: 0;
 }
 
@@ -86,14 +86,12 @@ header {
 }
 
 .header-icon {
-  font-size: 2rem;
   background: #e8d5f5;
-  border-radius: 14px;
-  width: 56px;
-  height: 56px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  border-radius: 16px;
+  height: 78px;
+  display: block;
+  object-fit: contain;
+  padding: 0.05rem;
   flex-shrink: 0;
 }
 
@@ -229,7 +227,7 @@ header h1 {
   gap: 0.65rem;
 }
 
-.merge-sort-badge {
+.badge {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
@@ -243,7 +241,7 @@ header h1 {
   letter-spacing: 0.03em;
 }
 
-.merge-sort-badge::before {
+.badge::before {
   content: "↕";
   font-size: 0.9rem;
 }
