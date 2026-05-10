@@ -8,6 +8,7 @@
 | Sofía Valentina Ku Paredes | [sofkp](https://github.com/sofkp) |
 | Luis Anthony Romero Padilla | [LuixRom](https://github.com/LuixRom) |
 | María Karolay Tamayo Hilario | [karolaytamayoh](https://github.com/karolaytamayoh) |
+| Hanks Jean Pierce Vargas Iglesias | [hanksvi](https://github.com/hanksvi) |
 
 ## ¿Qué es esto?
 
