@@ -1,6 +1,5 @@
 import hashlib
 import os
-import pickle
 import shutil
 import struct
 import tempfile
@@ -12,6 +11,12 @@ PAGE_HEADER_FORMAT = "H"
 PAGE_HEADER_SIZE = struct.calcsize(PAGE_HEADER_FORMAT)
 ENTRY_HEADER_FORMAT = "IH"
 ENTRY_HEADER_SIZE = struct.calcsize(ENTRY_HEADER_FORMAT)
+TYPE_NONE = b"N"
+TYPE_BOOL = b"B"
+TYPE_INT = b"I"
+TYPE_FLOAT = b"F"
+TYPE_STR = b"S"
+TYPE_DICT = b"D"
 
 
 class ExternalHashing:
@@ -51,7 +56,7 @@ class ExternalHashing:
     def insert(self, key, row: dict):
         bucket_id = self._bucket_id(key)
 
-        payload = pickle.dumps((key, row))
+        payload = self._pack_payload(key, row)
         entry = struct.pack(ENTRY_HEADER_FORMAT, bucket_id, len(payload)) + payload
         if len(entry) > PAGE_SIZE - PAGE_HEADER_SIZE:
             raise ValueError("ExternalHashing entry is larger than one page")
@@ -86,7 +91,7 @@ class ExternalHashing:
 
                 if stored_bucket != bucket_id:
                     continue
-                stored_key, row = pickle.loads(payload)
+                stored_key, row = self._unpack_payload(payload)
                 if stored_key == key:
                     matches.append(row)
         return matches
@@ -108,7 +113,7 @@ class ExternalHashing:
             shutil.rmtree(self.base_dir)
 
     def _bucket_id(self, key):
-        raw_key = pickle.dumps(key)
+        raw_key = self._pack_value(key)
         digest = hashlib.sha256(raw_key).digest()
         return int.from_bytes(digest[:8], "big") % self.bucket_count
 
@@ -152,3 +157,73 @@ class ExternalHashing:
     @staticmethod
     def _set_page_used(page: bytearray, used: int):
         page[:PAGE_HEADER_SIZE] = struct.pack(PAGE_HEADER_FORMAT, used)
+
+    @classmethod
+    def _pack_payload(cls, key, row: dict) -> bytes:
+        return cls._pack_value(key) + cls._pack_value(row)
+
+    @classmethod
+    def _unpack_payload(cls, payload: bytes):
+        key, pos = cls._unpack_value(payload, 0)
+        row, pos = cls._unpack_value(payload, pos)
+        if pos != len(payload):
+            raise ValueError("ExternalHashing payload has trailing bytes")
+        return key, row
+
+    @classmethod
+    def _pack_value(cls, value) -> bytes:
+        if value is None:
+            return TYPE_NONE
+        if isinstance(value, bool):
+            return TYPE_BOOL + struct.pack("?", value)
+        if isinstance(value, int) and not isinstance(value, bool):
+            return TYPE_INT + struct.pack("q", value)
+        if isinstance(value, float):
+            return TYPE_FLOAT + struct.pack("d", value)
+        if isinstance(value, str):
+            raw = value.encode("utf-8")
+            return TYPE_STR + struct.pack("I", len(raw)) + raw
+        if isinstance(value, dict):
+            items = list(value.items())
+            data = bytearray(TYPE_DICT + struct.pack("H", len(items)))
+            for key, item_value in items:
+                if not isinstance(key, str):
+                    raise TypeError("ExternalHashing only supports string keys in row dictionaries")
+                key_raw = key.encode("utf-8")
+                data.extend(struct.pack("H", len(key_raw)))
+                data.extend(key_raw)
+                data.extend(cls._pack_value(item_value))
+            return bytes(data)
+        raise TypeError(f"ExternalHashing cannot pack value of type {type(value).__name__}")
+
+    @classmethod
+    def _unpack_value(cls, raw: bytes, pos: int):
+        tag = raw[pos:pos + 1]
+        pos += 1
+
+        if tag == TYPE_NONE:
+            return None, pos
+        if tag == TYPE_BOOL:
+            return struct.unpack("?", raw[pos:pos + 1])[0], pos + 1
+        if tag == TYPE_INT:
+            return struct.unpack("q", raw[pos:pos + 8])[0], pos + 8
+        if tag == TYPE_FLOAT:
+            return struct.unpack("d", raw[pos:pos + 8])[0], pos + 8
+        if tag == TYPE_STR:
+            size = struct.unpack("I", raw[pos:pos + 4])[0]
+            pos += 4
+            return raw[pos:pos + size].decode("utf-8"), pos + size
+        if tag == TYPE_DICT:
+            count = struct.unpack("H", raw[pos:pos + 2])[0]
+            pos += 2
+            result = {}
+            for _ in range(count):
+                key_size = struct.unpack("H", raw[pos:pos + 2])[0]
+                pos += 2
+                key = raw[pos:pos + key_size].decode("utf-8")
+                pos += key_size
+                value, pos = cls._unpack_value(raw, pos)
+                result[key] = value
+            return result, pos
+
+        raise ValueError(f"Unknown ExternalHashing type tag: {tag!r}")
