@@ -1,5 +1,9 @@
 # BD2 - Proyecto 1: AIRBNB DBMS
 
+<p align="center">
+  <img src="/docs/airbnb_dbms.png" alt="Airbnb DBMS Logo o Diagrama" width="600">
+</p>
+
 **Integrantes**
 
 | Nombre | GitHub |
