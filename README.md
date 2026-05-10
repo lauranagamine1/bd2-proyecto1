@@ -1,7 +1,7 @@
 # BD2 - Proyecto 1: AIRBNB DBMS
 
 <p align="center">
-  <img src="/docs/airbnb_dbms.png" alt="Airbnb DBMS Logo o Diagrama" width="600">
+  <img src="/docs/airbnb_dbms.png" alt="Airbnb DBMS Logo o Diagrama" width="300">
 </p>
 
 **Integrantes**
