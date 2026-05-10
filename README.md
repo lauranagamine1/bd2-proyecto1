@@ -1,4 +1,4 @@
-# BD2 - Proyecto 1: AIRBNB BD
+# BD2 - Proyecto 1: AIRBNB DBMS
 
 **Integrantes**
 
@@ -12,7 +12,7 @@
 
 ## ¿Qué es esto?
 
-AIRBNB BD es un mini gestor de base de datos hecho desde cero en Python para el Proyecto 1 de Base de Datos 2. Integra parser SQL propio, archivos de registros en disco, índices por columna, buffer pool con páginas de 4 KB, API REST con FastAPI y frontend en React.
+AIRBNB DBMS es un mini gestor de base de datos hecho desde cero en Python para el Proyecto 1 de Base de Datos 2. Integra parser SQL propio, archivos de registros en disco, índices por columna, buffer pool con páginas de 4 KB, API REST con FastAPI y frontend en React.
 
 El flujo principal es:
 
