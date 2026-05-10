@@ -77,7 +77,7 @@ CHAR       ::= cualquier carácter excepto "'"
 | `SELECT ... WHERE col BETWEEN v1 AND v2` | `index.range_search(v1, v2)` |
 | `SELECT ... WHERE col IN (POINT(...), RADIUS r)` | `index.range_search(point, r)` |
 | `SELECT ... WHERE col IN (POINT(...), K k)` | `index.knn(point, k)` |
-| `SELECT ... JOIN ... ON t1.col = t2.col` | `HashJoin.join(...)` |
+| `SELECT ... JOIN ... ON t1.col = t2.col` | `DBManager.external_hashing_join(...)` |
 | `INSERT INTO ... VALUES (...)` | `index.add(record)` |
 | `DELETE FROM ... WHERE col = v` | `index.remove(v)` |
 | `CREATE TABLE ... FROM FILE path` | carga CSV + `index.add(record)` por fila |

@@ -88,7 +88,7 @@ SELECT * FROM airbnb_sequential WHERE id BETWEEN 9000001 AND 9000003;
 
 SELECT * FROM airbnb ORDER BY price ASC;
 
-***HASH JOIN 1
+***EXTERNAL HASHING JOIN 1
 
 CREATE TABLE ordenes (id INT, cliente_id INT, total INT);
 INSERT INTO ordenes VALUES (10, 1, 300);
@@ -97,7 +97,7 @@ INSERT INTO ordenes VALUES (12, 4, 90);
 
 SELECT * FROM clientes JOIN ordenes ON clientes.id = ordenes.cliente_id;
 
-***HASH JOIN 2
+***EXTERNAL HASHING JOIN 2
 
 CREATE TABLE reservas (
   id INT,

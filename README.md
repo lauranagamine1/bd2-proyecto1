@@ -69,7 +69,7 @@ Los índices guardan la clave y un puntero/`record_id`.
 ```text
 external/
   merge_sort.py          #Merge Sort
-  hash_join.py           #Hash Join 
+  external_hashing.py    #External Hashing para joins por igualdad
 parser/
   scanner.py             # tokenizador
   parser.py              # parser SQL -> AST

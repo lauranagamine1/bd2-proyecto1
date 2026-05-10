@@ -29,7 +29,7 @@ class Engine:
         self._schemas: dict[str, list] = {}
         self._used_external_sort = False
         self._used_replacement_selection = False
-        self._used_hash_join = False
+        self._used_external_hashing = False
 
     def stats(self) -> dict:
         bm = self._bm.stats
@@ -47,7 +47,7 @@ class Engine:
             },
             "external_sort": self._used_external_sort,
             "replacement_selection": self._used_replacement_selection,
-            "hash_join": self._used_hash_join,
+            "external_hashing": self._used_external_hashing,
         }
 
     def reset_stats(self):
@@ -55,7 +55,7 @@ class Engine:
         self._bm.reset_stats()
         self._used_external_sort = False
         self._used_replacement_selection = False
-        self._used_hash_join = False
+        self._used_external_hashing = False
 
     def run(self, sql: str) -> list:
         try:
@@ -166,8 +166,8 @@ class Engine:
                 raise EngineError("ORDER BY despues de JOIN aun no esta implementado")
 
             rows = self._select_join(table, join)
-            self._bm._reads += self._hash_join_page_reads(table, join["table"])
-            self._used_hash_join = True
+            self._bm._reads += self._external_hashing_page_reads(table, join["table"])
+            self._used_external_hashing = True
             return rows
 
         if cond is None:
@@ -228,9 +228,9 @@ class Engine:
                 f"JOIN invalido: se esperaba unir '{left_table}' con '{right_table}'"
             )
 
-        return self._db.hash_join(left_table, right_table, left_ref["column"], right_ref["column"])
+        return self._db.external_hashing_join(left_table, right_table, left_ref["column"], right_ref["column"])
 
-    def _hash_join_page_reads(self, left_table: str, right_table: str) -> int:
+    def _external_hashing_page_reads(self, left_table: str, right_table: str) -> int:
         return 2 * (
             self._table_scan_pages(left_table) + self._table_scan_pages(right_table)
         )

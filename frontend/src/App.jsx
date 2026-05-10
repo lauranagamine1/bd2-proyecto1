@@ -97,7 +97,7 @@ function StatsPanel({ stats }) {
     },
     external_sort: stats?.external_sort ?? false,
     replacement_selection: stats?.replacement_selection ?? false,
-    hash_join: stats?.hash_join ?? false,
+    external_hashing: stats?.external_hashing ?? false,
   }
   return (
     <div className="stats-wrap">
@@ -107,8 +107,8 @@ function StatsPanel({ stats }) {
       {display.replacement_selection && (
         <div className="badge rs">Replacement Selection activo</div>
       )}
-      {display.hash_join && (
-        <div className="badge">Hash Join activo</div>
+      {display.external_hashing && (
+        <div className="badge">External Hashing activo</div>
       )}
       <div className="stats">
         <div className="stat-item">

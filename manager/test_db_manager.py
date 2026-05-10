@@ -135,7 +135,7 @@ def test_indexed_duplicate_equal_searches():
     print("\n" + "=" * 60)
 
 
-def test_hash_join():
+def test_external_hashing_join():
     print("\n" + "=" * 60)
     reset_test_data()
 
@@ -164,8 +164,8 @@ def test_hash_join():
     db.insert("ordenes", ["11", "1", "450"])
     db.insert("ordenes", ["12", "3", "999"])
 
-    rows = db.hash_join("clientes", "ordenes", "id", "cliente_id")
-    print("hash_join('clientes', 'ordenes', 'id', 'cliente_id'):")
+    rows = db.external_hashing_join("clientes", "ordenes", "id", "cliente_id")
+    print("external_hashing_join('clientes', 'ordenes', 'id', 'cliente_id'):")
     print(rows)
 
     assert len(rows) == 2
@@ -179,4 +179,4 @@ if __name__ == "__main__":
     test_manual_operations()
     test_csv_load()
     test_indexed_duplicate_equal_searches()
-    test_hash_join()
+    test_external_hashing_join()

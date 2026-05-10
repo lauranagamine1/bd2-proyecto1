@@ -3,6 +3,7 @@ import os
 import pickle
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 from record_file import RecordFile
 from schemas import Column, DataType, IndexType, Record, Table
@@ -19,7 +20,7 @@ from extendible_hashing import ExtendibleHash
 from r_tree import RTree
 from sequential_file import SequentialFile
 from external_sort import ExternalSort
-from hash_join import HashJoin
+from external_hashing import ExternalHashing
 from replacement_selection import ReplacementSelection
 
 class DBManager:
@@ -723,8 +724,8 @@ class DBManager:
 
         return count
     
-    def hash_join(self, left_table_name: str, right_table_name: str, left_column_name: str, 
-                  right_column_name: str) -> tuple[list[dict], dict]:
+    def external_hashing_join(self, left_table_name: str, right_table_name: str, left_column_name: str,
+                              right_column_name: str) -> list[dict]:
 
         left_table = self.get_schema(left_table_name)
         right_table = self.get_schema(right_table_name)
@@ -739,20 +740,68 @@ class DBManager:
         left_count = self._count_rows(left_table)
         right_count = self._count_rows(right_table)
 
-        hash_table = HashJoin()
-
         if left_count <= right_count:
-            rows = hash_table.join(build_rows=self._scan_rows(left_table), probe_rows=self._scan_rows(right_table),
-                               build_key=left_column.name, probe_key=right_column.name, 
-                               build_name=left_table.name, probe_name=right_table.name,
-                               is_left=True, build_size=left_count )
-        else:
-            rows = hash_table.join(build_rows=self._scan_rows(right_table), probe_rows=self._scan_rows(left_table),
-                               build_key=right_column.name, probe_key=left_column.name,
-                               build_name=right_table.name, probe_name=left_table.name,
-                               is_left=False, build_size=right_count )
+            return self._external_hashing_join(
+                build_rows=self._scan_rows(left_table),
+                probe_rows=self._scan_rows(right_table),
+                build_key=left_column.name,
+                probe_key=right_column.name,
+                build_name=left_table.name,
+                probe_name=right_table.name,
+                build_is_left=True,
+                build_size=left_count,
+            )
 
-        return rows
+        return self._external_hashing_join(
+            build_rows=self._scan_rows(right_table),
+            probe_rows=self._scan_rows(left_table),
+            build_key=right_column.name,
+            probe_key=left_column.name,
+            build_name=right_table.name,
+            probe_name=left_table.name,
+            build_is_left=False,
+            build_size=right_count,
+        )
+
+    def _external_hashing_join(self, build_rows, probe_rows, build_key, probe_key,
+                               build_name, probe_name, build_is_left, build_size):
+        external_hash = ExternalHashing(
+            bucket_count=max(1, build_size * 2),
+            base_dir=self._external_hashing_temp_dir(),
+            buffer_manager=self.buffer_manager,
+            cleanup_on_close=False,
+        )
+        try:
+            external_hash.build(build_rows, build_key)
+
+            rows = []
+            for probe_row in probe_rows:
+                matches = external_hash.search(probe_row[probe_key])
+                for build_row in matches:
+                    if build_is_left:
+                        rows.append(self._join_rows(build_row, probe_row, build_name, probe_name))
+                    else:
+                        rows.append(self._join_rows(probe_row, build_row, probe_name, build_name))
+            return rows
+        finally:
+            external_hash.close()
+
+    def _external_hashing_temp_dir(self):
+        base_dir = os.path.join(self.base_path, "external_hashing")
+        os.makedirs(base_dir, exist_ok=True)
+        return tempfile.mkdtemp(prefix="join_", dir=base_dir)
+
+    @staticmethod
+    def _join_rows(left_row, right_row, left_name, right_name):
+        joined = {}
+
+        for key, value in left_row.items():
+            joined[f"{left_name}.{key}"] = value
+
+        for key, value in right_row.items():
+            joined[f"{right_name}.{key}"] = value
+
+        return joined
 
     @staticmethod
     def pack_record_id(record_id: int) -> bytes:
